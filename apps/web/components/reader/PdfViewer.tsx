@@ -7,6 +7,11 @@ import { PdfHighlighter, PdfLoader, Highlight, Popup } from "react-pdf-highlight
 import type { IHighlight, NewHighlight } from "react-pdf-highlighter";
 // PdfHighlighter는 class component이므로 ref로 viewer 접근 가능
 type PdfHighlighterInstance = InstanceType<typeof PdfHighlighter>;
+type PdfHighlighterWithRender = {
+  viewer?: unknown;
+  highlightRoots?: Record<number, { container: Element }>;
+  renderHighlightLayers?: () => void;
+};
 
 import HighlightTip, { HighlightEditTip } from "./HighlightTip";
 import type { HighlightColor } from "@/types";
@@ -48,6 +53,7 @@ export default function PdfViewer({
   onHighlightClick,
   onPageChange,
 }: Props) {
+  const viewerRootRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<(h: AppHighlight) => void>(() => {});
   const highlighterRef = useRef<PdfHighlighterInstance>(null);
   const cleanupPageTracking = useRef<(() => void) | null>(null);
@@ -64,8 +70,62 @@ export default function PdfViewer({
     [highlights]
   );
 
+  const renderHighlightLayers = useCallback(() => {
+    const highlighter = highlighterRef.current as unknown as PdfHighlighterWithRender | null;
+    if (!highlighter?.viewer || !highlighter.renderHighlightLayers) return;
+    const existingLayers = Array.from(
+      viewerRootRef.current?.querySelectorAll(".PdfHighlighter__highlight-layer") ?? []
+    );
+    const trackedLayers = Object.values(highlighter.highlightRoots ?? {}).map(
+      ({ container }) => container
+    );
+    const hasUntrackedLayer = existingLayers.some((layer) => !trackedLayers.includes(layer));
+    if (hasUntrackedLayer) return;
+    highlighter.renderHighlightLayers();
+  }, []);
+
+  const scheduleHighlightLayerRender = useCallback(() => {
+    const frame = window.requestAnimationFrame(renderHighlightLayers);
+    const shortDelay = window.setTimeout(renderHighlightLayers, 150);
+    const longDelay = window.setTimeout(renderHighlightLayers, 600);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(shortDelay);
+      window.clearTimeout(longDelay);
+    };
+  }, [renderHighlightLayers]);
+
+  useEffect(() => {
+    if (highlights.length === 0) return;
+    return scheduleHighlightLayerRender();
+  }, [highlights, scale, scheduleHighlightLayerRender]);
+
+  useEffect(() => {
+    if (highlights.length === 0) return;
+    const root = viewerRootRef.current;
+    if (!root) return;
+
+    const renderIfTextLayerExists = () => {
+      if (!root.querySelector(".textLayer")) return;
+      window.requestAnimationFrame(renderHighlightLayers);
+    };
+
+    renderIfTextLayerExists();
+    const observer = new MutationObserver(renderIfTextLayerExists);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [highlights.length, renderHighlightLayers]);
+
+  const setHighlighterRef = useCallback((node: PdfHighlighterInstance | null) => {
+    highlighterRef.current = node;
+    if (node && highlights.length > 0) scheduleHighlightLayerRender();
+  }, [highlights.length, scheduleHighlightLayerRender]);
+
   const applyScale = useCallback((value: string) => {
     const viewer = highlighterRef.current?.viewer;
+    // pdf.js exposes scale as an imperative viewer property.
+    // eslint-disable-next-line react-hooks/immutability
     if (viewer) viewer.currentScaleValue = value;
     setScale(value);
   }, []);
@@ -102,7 +162,7 @@ export default function PdfViewer({
     : `${Math.round(parseFloat(scale) * 100)}%`;
 
   return (
-    <div className="flex-1 overflow-auto relative" style={{ background: "#e5e7eb" }}>
+    <div ref={viewerRootRef} className="flex-1 overflow-auto relative" style={{ background: "#e5e7eb" }}>
       {/* 하단 컨트롤 바: 페이지 정보 + 줌 */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-white border shadow-lg rounded-full px-3 py-1">
         {totalPages > 0 && (
@@ -139,13 +199,14 @@ export default function PdfViewer({
       <PdfLoader workerSrc={WORKER_SRC} url={url} beforeLoad={<Spinner />}>
         {(pdfDocument) => (
           <PdfHighlighter
-            ref={highlighterRef}
+            ref={setHighlighterRef}
             pdfDocument={pdfDocument}
             highlights={highlights}
             pdfScaleValue={scale}
             onScrollChange={() => {}}
             scrollRef={(fn) => {
               scrollRef.current = fn;
+              scheduleHighlightLayerRender();
               if (cleanupPageTracking.current) return;
               const viewer = highlighterRef.current?.viewer;
               type InternalViewer = {
@@ -169,7 +230,7 @@ export default function PdfViewer({
               eventBus.on("pagechanging", handler);
               cleanupPageTracking.current = () => eventBus.off("pagechanging", handler);
             }}
-            onSelectionFinished={(position, content, hideTipAndSelection, transformSelection) => (
+            onSelectionFinished={(position, content, hideTipAndSelection) => (
               <HighlightTip
                 onColorSelect={(color) => {
                   onHighlightCreate({ position, content, comment: { text: "", emoji: "" } }, color);
@@ -194,7 +255,35 @@ export default function PdfViewer({
               const color = (appHighlight as AppHighlight).color ?? "yellow";
               const style = COLOR_STYLE[color as HighlightColor] ?? COLOR_STYLE.yellow;
 
-              const component = (
+              const openEditTip = () => {
+                onHighlightClick(appHighlight as AppHighlight);
+                setTip(highlight, () => (
+                  <HighlightEditTip
+                    currentColor={color}
+                    onColorChange={(newColor) => {
+                      onHighlightUpdate(highlight.id, newColor);
+                      hideTip();
+                    }}
+                    onDelete={() => {
+                      onHighlightDelete(highlight.id);
+                      hideTip();
+                    }}
+                  />
+                ));
+              };
+
+              const component = highlight.content.image ? (
+                <div
+                  className="Highlight__part"
+                  style={{
+                    ...highlight.position.boundingRect,
+                    position: "absolute",
+                    backgroundColor: style,
+                    cursor: "pointer",
+                    filter: isScrolledTo ? "brightness(0.85)" : undefined,
+                  }}
+                />
+              ) : (
                 <Highlight
                   isScrolledTo={isScrolledTo}
                   position={highlight.position}
@@ -214,22 +303,7 @@ export default function PdfViewer({
                   key={highlight.id}
                 >
                   <div
-                    onClick={() => {
-                      onHighlightClick(appHighlight as AppHighlight);
-                      setTip(highlight, () => (
-                        <HighlightEditTip
-                          currentColor={color}
-                          onColorChange={(newColor) => {
-                            onHighlightUpdate(highlight.id, newColor);
-                            hideTip();
-                          }}
-                          onDelete={() => {
-                            onHighlightDelete(highlight.id);
-                            hideTip();
-                          }}
-                        />
-                      ));
-                    }}
+                    onClick={openEditTip}
                     style={{
                       ["--highlight-color" as string]: style,
                     }}

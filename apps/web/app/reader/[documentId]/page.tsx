@@ -52,12 +52,13 @@ export default function ReaderPage() {
     queryFn: () => api.get("/settings").then((r) => r.data),
   });
 
-  // 초기 하이라이트 로드 (settings 로드 완료 후)
-  useEffect(() => {
-    if (!documentId || !settings) return;
-    const limit = settings.highlights_per_page;
+  const highlightPageLimit = settings?.highlights_per_page ?? 50;
 
-    api.get(`/documents/${documentId}/highlights`, { params: { pdf_page_from: 1, limit } })
+  // 초기 하이라이트 로드
+  useEffect(() => {
+    if (!documentId) return;
+
+    api.get(`/documents/${documentId}/highlights`, { params: { pdf_page_from: 1, limit: highlightPageLimit } })
       .then((r) => {
         const data: AppHighlight[] = r.data.map((h: AppHighlight) => ({
           ...h,
@@ -68,7 +69,7 @@ export default function ReaderPage() {
           ? Math.max(...data.map((h) => (h.position as { pageNumber: number }).pageNumber))
           : Infinity;
       });
-  }, [documentId, settings, setHighlights]);
+  }, [documentId, highlightPageLimit, setHighlights]);
 
   const { data: collectionData } = useQuery({
     queryKey: ["collection", documentId],
@@ -86,9 +87,8 @@ export default function ReaderPage() {
     isLoadingMoreRef.current = true;
     try {
       const pdf_page_from = loadedUntilPageRef.current + 1;
-      const limit = settings.highlights_per_page;
       const { data } = await api.get(`/documents/${documentId}/highlights`, {
-        params: { pdf_page_from, limit },
+        params: { pdf_page_from, limit: highlightPageLimit },
       });
 
       const newHighlights: AppHighlight[] = data.map((h: AppHighlight) => ({
@@ -108,7 +108,7 @@ export default function ReaderPage() {
     } finally {
       isLoadingMoreRef.current = false;
     }
-  }, [documentId, settings, addHighlight]);
+  }, [documentId, settings, highlightPageLimit, addHighlight]);
 
   async function handleHighlightUpdate(id: string, color: HighlightColor) {
     updateHighlight(id, { color });
