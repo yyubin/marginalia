@@ -2,7 +2,7 @@
 
 import "react-pdf-highlighter/dist/style.css";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PdfHighlighter, PdfLoader, Highlight, Popup } from "react-pdf-highlighter";
 import type { IHighlight, NewHighlight } from "react-pdf-highlighter";
 // PdfHighlighter는 class component이므로 ref로 viewer 접근 가능
@@ -34,6 +34,10 @@ interface Props {
   onPageChange?: (page: number) => void;
 }
 
+const ZOOM_STEP = 0.25;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 3.0;
+
 export default function PdfViewer({
   url,
   highlights,
@@ -46,21 +50,86 @@ export default function PdfViewer({
 }: Props) {
   const scrollRef = useRef<(h: AppHighlight) => void>(() => {});
   const highlighterRef = useRef<PdfHighlighterInstance>(null);
+  // pdfScaleValue prop이 ResizeObserver 트리거 시 재적용되므로
+  // 직접 조작과 함께 prop도 동기화해야 스케일이 유지됨
+  const [scale, setScale] = useState<string>("page-width");
 
   const getHighlightById = useCallback(
     (id: string) => highlights.find((h) => h.id === id),
     [highlights]
   );
 
+  const applyScale = useCallback((value: string) => {
+    const viewer = highlighterRef.current?.viewer;
+    if (viewer) viewer.currentScaleValue = value;
+    setScale(value);
+  }, []);
+
+  const zoomIn = useCallback(() => {
+    const viewer = highlighterRef.current?.viewer;
+    if (!viewer) return;
+    const next = Math.min(ZOOM_MAX, Math.round((viewer.currentScale + ZOOM_STEP) * 100) / 100);
+    applyScale(String(next));
+  }, [applyScale]);
+
+  const zoomOut = useCallback(() => {
+    const viewer = highlighterRef.current?.viewer;
+    if (!viewer) return;
+    const next = Math.max(ZOOM_MIN, Math.round((viewer.currentScale - ZOOM_STEP) * 100) / 100);
+    applyScale(String(next));
+  }, [applyScale]);
+
+  const resetZoom = useCallback(() => applyScale("page-width"), [applyScale]);
+
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      if (e.deltaY < 0) zoomIn();
+      else zoomOut();
+    };
+    window.addEventListener("wheel", handleWheel, { passive: false });
+    return () => window.removeEventListener("wheel", handleWheel);
+  }, [zoomIn, zoomOut]);
+
+  const scaleLabel = scale === "page-width"
+    ? "맞춤"
+    : `${Math.round(parseFloat(scale) * 100)}%`;
+
   return (
     <div className="flex-1 overflow-auto relative" style={{ background: "#e5e7eb" }}>
+      {/* 줌 컨트롤 */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-white border shadow-lg rounded-full px-2 py-1">
+        <button
+          onClick={zoomOut}
+          className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-700 text-lg leading-none"
+          title="축소 (Ctrl + 스크롤)"
+        >
+          −
+        </button>
+        <button
+          onClick={resetZoom}
+          className="min-w-[52px] text-xs text-gray-600 hover:bg-gray-100 rounded-full px-2 py-1 text-center"
+          title="너비 맞춤으로 초기화"
+        >
+          {scaleLabel}
+        </button>
+        <button
+          onClick={zoomIn}
+          className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-700 text-lg leading-none"
+          title="확대 (Ctrl + 스크롤)"
+        >
+          +
+        </button>
+      </div>
+
       <PdfLoader workerSrc={WORKER_SRC} url={url} beforeLoad={<Spinner />}>
         {(pdfDocument) => (
           <PdfHighlighter
             ref={highlighterRef}
             pdfDocument={pdfDocument}
             highlights={highlights}
-            pdfScaleValue="page-width"
+            pdfScaleValue={scale}
             onScrollChange={() => {
               const page = highlighterRef.current?.viewer?.currentPageNumber;
               if (page) onPageChange?.(page);
