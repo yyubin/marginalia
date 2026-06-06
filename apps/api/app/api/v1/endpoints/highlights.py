@@ -1,7 +1,7 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import cast, Integer, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -17,14 +17,22 @@ router = APIRouter(tags=["highlights"])
 @router.get("/documents/{doc_id}/highlights", response_model=list[HighlightResponse])
 async def list_highlights(
     doc_id: uuid.UUID,
+    pdf_page_from: int = Query(default=1, ge=1),
+    limit: int = Query(default=50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     await _assert_doc_owner(db, doc_id, current_user.id)
+    page_col = cast(Highlight.position["pageNumber"].astext, Integer)
     result = await db.execute(
         select(Highlight)
-        .where(Highlight.document_id == doc_id, Highlight.user_id == current_user.id)
-        .order_by(Highlight.created_at)
+        .where(
+            Highlight.document_id == doc_id,
+            Highlight.user_id == current_user.id,
+            page_col >= pdf_page_from,
+        )
+        .order_by(page_col, Highlight.created_at)
+        .limit(limit)
     )
     return result.scalars().all()
 
