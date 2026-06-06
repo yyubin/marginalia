@@ -24,3 +24,4 @@ class Document(Base):
     highlights: Mapped[list["Highlight"]] = relationship(back_populates="document", cascade="all, delete-orphan")
     notes: Mapped[list["Note"]] = relationship(back_populates="document", cascade="all, delete-orphan")
     collections: Mapped[list["Collection"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+    bookmarks: Mapped[list["Bookmark"]] = relationship(back_populates="document", cascade="all, delete-orphan")

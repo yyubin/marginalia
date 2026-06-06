@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     R2_BUCKET_NAME: str = "marginalia-docs"
     R2_PUBLIC_URL: str = ""
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
+    FRONTEND_URL: str = "http://localhost:3000"
+
     # Anthropic
     ANTHROPIC_API_KEY: str = ""
 
