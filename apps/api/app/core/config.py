@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     # Anthropic
     ANTHROPIC_API_KEY: str = ""
 
+    # Upload limits
+    MAX_DOCUMENTS_PER_USER: int = 3
+    MAX_FILE_SIZE_MB: int = 50
+
 
 
 settings = Settings()

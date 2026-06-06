@@ -2,9 +2,10 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.document import Document
@@ -33,9 +34,23 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
 ):
     if file.content_type != "application/pdf":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only PDF files are accepted")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF 파일만 업로드할 수 있습니다")
 
+    count = await db.scalar(select(func.count()).select_from(Document).where(Document.user_id == current_user.id))
+    if count >= settings.MAX_DOCUMENTS_PER_USER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"최대 {settings.MAX_DOCUMENTS_PER_USER}개의 PDF만 저장할 수 있습니다",
+        )
+
+    max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
     file_bytes = await file.read()
+    if len(file_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"파일 크기는 {settings.MAX_FILE_SIZE_MB}MB 이하여야 합니다",
+        )
+
     file_key = f"{current_user.id}/{uuid.uuid4()}.pdf"
     upload_file(file_bytes, file_key)
 

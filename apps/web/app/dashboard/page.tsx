@@ -17,6 +17,8 @@ export default function DashboardPage() {
     queryFn: () => api.get("/documents").then((r) => r.data),
   });
 
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   const uploadMutation = useMutation({
     mutationFn: (file: File) => {
       const form = new FormData();
@@ -25,7 +27,14 @@ export default function DashboardPage() {
         headers: { "Content-Type": "multipart/form-data" },
       });
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      setUploadError(null);
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setUploadError(detail ?? "업로드에 실패했습니다");
+    },
   });
 
   const deleteMutation = useMutation({
@@ -35,7 +44,10 @@ export default function DashboardPage() {
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (file) uploadMutation.mutate(file);
+    if (!file) return;
+    setUploadError(null);
+    uploadMutation.mutate(file);
+    e.target.value = ""; // 같은 파일 재선택 허용
   }
 
   function handleLogout() {
@@ -51,9 +63,16 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
         <h1 className="text-xl font-bold">Marginalia</h1>
-        <div className="flex gap-3">
-          <Button onClick={() => fileInputRef.current?.click()} disabled={uploadMutation.isPending}>
-            {uploadMutation.isPending ? "업로드 중..." : "PDF 업로드"}
+        <div className="flex items-center gap-3">
+          {uploadError && (
+            <span className="text-xs text-red-500">{uploadError}</span>
+          )}
+          <Button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadMutation.isPending || (documents?.length ?? 0) >= 3}
+            title={(documents?.length ?? 0) >= 3 ? "최대 3개까지 저장할 수 있습니다" : undefined}
+          >
+            {uploadMutation.isPending ? "업로드 중..." : `PDF 업로드 (${documents?.length ?? 0}/3)`}
           </Button>
           <Button variant="outline" onClick={() => router.push("/settings")}>
             설정
