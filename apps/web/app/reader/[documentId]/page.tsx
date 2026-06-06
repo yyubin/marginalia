@@ -12,7 +12,7 @@ import { useSchemeStore } from "@/store/schemeStore";
 import SchemePanel from "@/components/reader/SchemePanel";
 import NotesPanel from "@/components/reader/NotesPanel";
 import TranslatePanel from "@/components/reader/TranslatePanel";
-import type { HighlightColor, UserSettings } from "@/types";
+import type { Highlight as StoredHighlight, HighlightColor, UserSettings } from "@/types";
 import type { AppHighlight } from "@/components/reader/PdfViewer";
 
 const PdfViewer = dynamic(() => import("@/components/reader/PdfViewer"), { ssr: false });
@@ -24,6 +24,8 @@ export default function ReaderPage() {
   const { highlights, setHighlights, addHighlight, selectHighlight, updateHighlight, removeHighlight } = useHighlightStore();
   const { setItems } = useSchemeStore();
   const [translateText, setTranslateText] = useState<string | null>(null);
+  const [loadedHighlightsDocumentId, setLoadedHighlightsDocumentId] = useState<string | null>(null);
+  const [scrollTarget, setScrollTarget] = useState<{ highlight: AppHighlight; nonce: number } | null>(null);
 
   // 하이라이트 점진적 로드를 위한 상태
   const loadedUntilPageRef = useRef(0); // 마지막으로 로드한 PDF 페이지 번호
@@ -57,9 +59,11 @@ export default function ReaderPage() {
   // 초기 하이라이트 로드
   useEffect(() => {
     if (!documentId) return;
+    let cancelled = false;
 
     api.get(`/documents/${documentId}/highlights`, { params: { pdf_page_from: 1, limit: highlightPageLimit } })
       .then((r) => {
+        if (cancelled) return;
         const data: AppHighlight[] = r.data.map((h: AppHighlight) => ({
           ...h,
           comment: { text: "", emoji: "" },
@@ -68,7 +72,18 @@ export default function ReaderPage() {
         loadedUntilPageRef.current = data.length > 0
           ? Math.max(...data.map((h) => (h.position as { pageNumber: number }).pageNumber))
           : Infinity;
+        setLoadedHighlightsDocumentId(documentId);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHighlights([]);
+        loadedUntilPageRef.current = Infinity;
+        setLoadedHighlightsDocumentId(documentId);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [documentId, highlightPageLimit, setHighlights]);
 
   const { data: collectionData } = useQuery({
@@ -136,6 +151,15 @@ export default function ReaderPage() {
     }
   }
 
+  function handleHighlightNavigate(highlight: AppHighlight | StoredHighlight) {
+    const appHighlight = {
+      ...highlight,
+      comment: "comment" in highlight ? highlight.comment : { text: "", emoji: "" },
+    } as AppHighlight;
+    selectHighlight(appHighlight);
+    setScrollTarget({ highlight: appHighlight, nonce: Date.now() });
+  }
+
   return (
     <div className="h-screen flex flex-col bg-gray-100">
       <header className="bg-white border-b px-4 py-2 flex items-center gap-4 shrink-0 z-10">
@@ -153,6 +177,8 @@ export default function ReaderPage() {
           <PdfViewer
             url={pdfUrl}
             highlights={highlights as AppHighlight[]}
+            highlightsReady={loadedHighlightsDocumentId === documentId}
+            scrollTarget={scrollTarget}
             onHighlightCreate={handleHighlightCreate}
             onHighlightUpdate={handleHighlightUpdate}
             onHighlightDelete={handleHighlightDelete}
@@ -167,7 +193,7 @@ export default function ReaderPage() {
         )}
 
         <div className="w-80 flex flex-col border-l bg-white overflow-hidden shrink-0">
-          <SchemePanel documentId={documentId} />
+          <SchemePanel documentId={documentId} onHighlightClick={handleHighlightNavigate} />
           {translateText ? (
             <TranslatePanel
               text={translateText}
@@ -175,7 +201,7 @@ export default function ReaderPage() {
               documentId={documentId}
             />
           ) : (
-            <NotesPanel documentId={documentId} />
+            <NotesPanel documentId={documentId} onHighlightClick={handleHighlightNavigate} />
           )}
         </div>
       </div>

@@ -5,13 +5,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useHighlightStore } from "@/store/highlightStore";
 import { Button } from "@/components/ui/button";
-import type { Note } from "@/types";
+import type { Highlight, Note } from "@/types";
 
 interface Props {
   documentId: string;
+  onHighlightClick: (highlight: Highlight) => void;
 }
 
-export default function NotesPanel({ documentId }: Props) {
+export default function NotesPanel({ documentId, onHighlightClick }: Props) {
   void documentId;
   const { selectedHighlight } = useHighlightStore();
   const queryClient = useQueryClient();
@@ -20,7 +21,7 @@ export default function NotesPanel({ documentId }: Props) {
 
   const noteQueryKey = ["note", selectedHighlight?.id];
 
-  const { data: note } = useQuery<Note>({
+  const { data: note } = useQuery<Note | null>({
     queryKey: noteQueryKey,
     queryFn: () =>
       api.get(`/highlights/${selectedHighlight!.id}/note`).then((r) => r.data),
@@ -74,20 +75,33 @@ export default function NotesPanel({ documentId }: Props) {
 
         {selectedHighlight && (
           <div className="space-y-3">
-            <div className="text-xs text-gray-500 bg-gray-50 rounded p-2 leading-relaxed">
+            <button
+              type="button"
+              className="w-full text-left text-xs text-gray-500 bg-gray-50 rounded p-2 leading-relaxed hover:bg-gray-100"
+              onClick={() => onHighlightClick(selectedHighlight)}
+            >
               <p>&quot;{selectedHighlight.content.text}&quot;</p>
               <span className="text-[10px] text-gray-400 mt-1 block">
                 p. {(selectedHighlight.position as { pageNumber: number }).pageNumber}
               </span>
-            </div>
+            </button>
 
             {note && !editing ? (
-              <div>
+              <div
+                role="button"
+                tabIndex={0}
+                className="cursor-pointer rounded hover:bg-gray-50"
+                onClick={() => onHighlightClick(selectedHighlight)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") onHighlightClick(selectedHighlight);
+                }}
+              >
                 <p className="text-sm text-gray-700 whitespace-pre-wrap">{note.content}</p>
                 <div className="flex gap-2 mt-2">
                   <button
                     className="text-xs text-gray-400 hover:text-black"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setNoteContent(note.content);
                       setEditing(true);
                     }}
@@ -96,7 +110,10 @@ export default function NotesPanel({ documentId }: Props) {
                   </button>
                   <button
                     className="text-xs text-red-400 hover:text-red-600"
-                    onClick={() => deleteMutation.mutate(note.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteMutation.mutate(note.id);
+                    }}
                     disabled={deleteMutation.isPending}
                   >
                     삭제

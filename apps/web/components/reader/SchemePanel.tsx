@@ -3,12 +3,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useSchemeStore } from "@/store/schemeStore";
+import type { Highlight } from "@/types";
 
 interface Props {
   documentId: string;
+  onHighlightClick: (highlight: Highlight) => void;
 }
 
-export default function SchemePanel({ documentId }: Props) {
+export default function SchemePanel({ documentId, onHighlightClick }: Props) {
   const { items, removeItem, copyAll } = useSchemeStore();
   const queryClient = useQueryClient();
 
@@ -35,7 +37,16 @@ export default function SchemePanel({ documentId }: Props) {
           </p>
         )}
         {sorted.map((item, idx) => (
-          <div key={item.id} className="px-4 py-3 flex gap-2 group hover:bg-gray-50">
+          <div
+            key={item.id}
+            role="button"
+            tabIndex={0}
+            className="w-full text-left px-4 py-3 flex gap-2 group hover:bg-gray-50 cursor-pointer"
+            onClick={() => onHighlightClick(item.highlight)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") onHighlightClick(item.highlight);
+            }}
+          >
             <span className="text-xs text-gray-300 shrink-0 mt-0.5">{idx + 1}</span>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-gray-700 leading-relaxed">{item.highlight.content.text}</p>
@@ -45,7 +56,8 @@ export default function SchemePanel({ documentId }: Props) {
             </div>
             <button
               className="text-xs text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 shrink-0"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 removeItem(item.id);
                 removeMutation.mutate(item.id);
               }}

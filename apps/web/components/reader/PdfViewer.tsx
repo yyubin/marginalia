@@ -7,10 +7,17 @@ import { PdfHighlighter, PdfLoader, Highlight, Popup } from "react-pdf-highlight
 import type { IHighlight, NewHighlight } from "react-pdf-highlighter";
 // PdfHighlighter는 class component이므로 ref로 viewer 접근 가능
 type PdfHighlighterInstance = InstanceType<typeof PdfHighlighter>;
-type PdfHighlighterWithRender = {
-  viewer?: unknown;
-  highlightRoots?: Record<number, { container: Element }>;
-  renderHighlightLayers?: () => void;
+type PdfViewerLike = {
+  container?: HTMLElement;
+  currentPageNumber?: number;
+  pagesCount?: number;
+  pdfDocument?: { numPages?: number };
+  getPageView?: (pageIndex: number) => { div?: HTMLElement };
+  eventBus?: {
+    on(e: string, h: (ev: { pageNumber: number }) => void): void;
+    off(e: string, h: (ev: { pageNumber: number }) => void): void;
+  };
+  scrollPageIntoView?: (args: { pageNumber: number }) => void;
 };
 
 import HighlightTip, { HighlightEditTip } from "./HighlightTip";
@@ -31,6 +38,8 @@ export type AppHighlight = IHighlight & { color: HighlightColor };
 interface Props {
   url: string;
   highlights: AppHighlight[];
+  highlightsReady: boolean;
+  scrollTarget: { highlight: AppHighlight; nonce: number } | null;
   onHighlightCreate: (highlight: NewHighlight, color: HighlightColor, addToScheme?: boolean) => void;
   onHighlightUpdate: (id: string, color: HighlightColor) => void;
   onHighlightDelete: (id: string) => void;
@@ -46,6 +55,8 @@ const ZOOM_MAX = 3.0;
 export default function PdfViewer({
   url,
   highlights,
+  highlightsReady,
+  scrollTarget,
   onHighlightCreate,
   onHighlightUpdate,
   onHighlightDelete,
@@ -53,7 +64,6 @@ export default function PdfViewer({
   onHighlightClick,
   onPageChange,
 }: Props) {
-  const viewerRootRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<(h: AppHighlight) => void>(() => {});
   const highlighterRef = useRef<PdfHighlighterInstance>(null);
   const cleanupPageTracking = useRef<(() => void) | null>(null);
@@ -63,6 +73,7 @@ export default function PdfViewer({
   // 직접 조작과 함께 prop도 동기화해야 스케일이 유지됨
   const [scale, setScale] = useState<string>("page-width");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageInput, setPageInput] = useState("1");
   const [totalPages, setTotalPages] = useState(0);
 
   const getHighlightById = useCallback(
@@ -70,57 +81,64 @@ export default function PdfViewer({
     [highlights]
   );
 
-  const renderHighlightLayers = useCallback(() => {
-    const highlighter = highlighterRef.current as unknown as PdfHighlighterWithRender | null;
-    if (!highlighter?.viewer || !highlighter.renderHighlightLayers) return;
-    const existingLayers = Array.from(
-      viewerRootRef.current?.querySelectorAll(".PdfHighlighter__highlight-layer") ?? []
-    );
-    const trackedLayers = Object.values(highlighter.highlightRoots ?? {}).map(
-      ({ container }) => container
-    );
-    const hasUntrackedLayer = existingLayers.some((layer) => !trackedLayers.includes(layer));
-    if (hasUntrackedLayer) return;
-    highlighter.renderHighlightLayers();
-  }, []);
-
-  const scheduleHighlightLayerRender = useCallback(() => {
-    const frame = window.requestAnimationFrame(renderHighlightLayers);
-    const shortDelay = window.setTimeout(renderHighlightLayers, 150);
-    const longDelay = window.setTimeout(renderHighlightLayers, 600);
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(shortDelay);
-      window.clearTimeout(longDelay);
-    };
-  }, [renderHighlightLayers]);
-
-  useEffect(() => {
-    if (highlights.length === 0) return;
-    return scheduleHighlightLayerRender();
-  }, [highlights, scale, scheduleHighlightLayerRender]);
-
-  useEffect(() => {
-    if (highlights.length === 0) return;
-    const root = viewerRootRef.current;
-    if (!root) return;
-
-    const renderIfTextLayerExists = () => {
-      if (!root.querySelector(".textLayer")) return;
-      window.requestAnimationFrame(renderHighlightLayers);
-    };
-
-    renderIfTextLayerExists();
-    const observer = new MutationObserver(renderIfTextLayerExists);
-    observer.observe(root, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, [highlights.length, renderHighlightLayers]);
-
   const setHighlighterRef = useCallback((node: PdfHighlighterInstance | null) => {
     highlighterRef.current = node;
-    if (node && highlights.length > 0) scheduleHighlightLayerRender();
-  }, [highlights.length, scheduleHighlightLayerRender]);
+  }, []);
+
+  const handlePdfReady = useCallback((pageCount: number) => {
+    setTotalPages(pageCount);
+    setCurrentPage((page) => Math.min(page, pageCount));
+    setPageInput((page) => {
+      const pageNumber = Number(page);
+      if (!Number.isFinite(pageNumber) || pageNumber < 1) return "1";
+      return String(Math.min(pageNumber, pageCount));
+    });
+  }, []);
+
+  const updateCurrentPage = useCallback((page: number) => {
+    const nextPage = Math.max(1, Math.floor(page));
+    setCurrentPage(nextPage);
+    setPageInput(String(nextPage));
+    onPageChange?.(nextPage);
+  }, [onPageChange]);
+
+  const syncViewerPageState = useCallback(() => {
+    const viewer = highlighterRef.current?.viewer as PdfViewerLike | undefined;
+    if (!viewer) return;
+
+    const pageCount = viewer.pagesCount ?? viewer.pdfDocument?.numPages ?? 0;
+    if (pageCount) setTotalPages(pageCount);
+    if (viewer.currentPageNumber) updateCurrentPage(viewer.currentPageNumber);
+  }, [updateCurrentPage]);
+
+  const navigateViewerToPage = useCallback((page: number) => {
+    const viewer = highlighterRef.current?.viewer as PdfViewerLike | undefined;
+    if (!viewer) return;
+
+    const pageCount = totalPages || viewer.pagesCount || viewer.pdfDocument?.numPages || page;
+    const targetPage = Math.min(pageCount, Math.max(1, Math.floor(page)));
+
+    try {
+      if (viewer.scrollPageIntoView) {
+        viewer.scrollPageIntoView({ pageNumber: targetPage });
+      } else {
+        // pdf.js exposes page navigation as an imperative viewer property.
+        // eslint-disable-next-line react-hooks/immutability
+        viewer.currentPageNumber = targetPage;
+      }
+    } catch {
+      const pageNode = viewer.container?.querySelector<HTMLElement>(
+        `[data-page-number="${targetPage}"]`
+      );
+      pageNode?.scrollIntoView({ block: "start" });
+    }
+  }, [totalPages]);
+
+  const goToPage = useCallback((page: number) => {
+    const targetPage = Math.min(totalPages, Math.max(1, Math.floor(page)));
+    navigateViewerToPage(targetPage);
+    updateCurrentPage(targetPage);
+  }, [navigateViewerToPage, totalPages, updateCurrentPage]);
 
   const applyScale = useCallback((value: string) => {
     const viewer = highlighterRef.current?.viewer;
@@ -146,6 +164,46 @@ export default function PdfViewer({
 
   const resetZoom = useCallback(() => applyScale("page-width"), [applyScale]);
 
+  const canScrollToPage = useCallback((pageNumber: number) => {
+    const viewer = highlighterRef.current?.viewer as PdfViewerLike | undefined;
+    const pageView = viewer?.getPageView?.(pageNumber - 1);
+    const pageNode = pageView?.div;
+    return Boolean(pageNode?.isConnected && pageNode.offsetParent);
+  }, []);
+
+  useEffect(() => {
+    if (!highlightsReady || !scrollTarget) return;
+    let timeoutId: number | undefined;
+    const highlight = scrollTarget.highlight;
+    const pageNumber = (highlight.position as { pageNumber: number }).pageNumber;
+
+    navigateViewerToPage(pageNumber);
+
+    function tryScroll(attempt = 0) {
+      if (!canScrollToPage(pageNumber)) {
+        if (attempt < 10) timeoutId = window.setTimeout(() => tryScroll(attempt + 1), 80);
+        return;
+      }
+
+      try {
+        scrollRef.current(highlight);
+      } catch {
+        if (attempt < 10) timeoutId = window.setTimeout(() => tryScroll(attempt + 1), 80);
+      }
+    }
+
+    timeoutId = window.setTimeout(() => tryScroll(), 120);
+    return () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [canScrollToPage, highlightsReady, navigateViewerToPage, scrollTarget]);
+
+  useEffect(() => {
+    return () => {
+      scrollRef.current = () => {};
+    };
+  }, []);
+
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
@@ -161,15 +219,57 @@ export default function PdfViewer({
     ? "맞춤"
     : `${Math.round(parseFloat(scale) * 100)}%`;
 
+  const pageInputValue = totalPages > 0 ? pageInput : "";
+
   return (
-    <div ref={viewerRootRef} className="flex-1 overflow-auto relative" style={{ background: "#e5e7eb" }}>
-      {/* 하단 컨트롤 바: 페이지 정보 + 줌 */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-white border shadow-lg rounded-full px-3 py-1">
+    <div className="flex-1 overflow-auto relative" style={{ background: "#e5e7eb" }}>
+      <div className="fixed bottom-4 left-1/2 lg:left-[calc((100vw-20rem)/2)] -translate-x-1/2 z-[9999] flex items-center gap-1 bg-white border shadow-lg rounded-full px-3 py-1">
         {totalPages > 0 && (
           <>
-            <span className="text-xs text-gray-500 tabular-nums px-1">
-              {currentPage} / {totalPages}
-            </span>
+            <form
+              className="flex items-center gap-1 text-xs text-gray-500 tabular-nums"
+              onSubmit={(e) => {
+                e.preventDefault();
+                goToPage(Number(pageInput));
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1}
+                className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent text-gray-700"
+                title="이전 페이지"
+              >
+                ‹
+              </button>
+              <input
+                type="number"
+                min={1}
+                max={totalPages}
+                value={pageInputValue}
+                onChange={(e) => setPageInput(e.target.value)}
+                onBlur={() => setPageInput(String(currentPage))}
+                className="w-12 h-6 rounded-full border border-gray-200 px-2 text-center text-xs text-gray-700 outline-none focus:border-gray-400"
+                aria-label="페이지 번호"
+              />
+              <span>/ {totalPages}</span>
+              <button
+                type="submit"
+                className="h-6 px-2 rounded-full hover:bg-gray-100 text-gray-700"
+                title="페이지로 이동"
+              >
+                이동
+              </button>
+              <button
+                type="button"
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= totalPages}
+                className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent text-gray-700"
+                title="다음 페이지"
+              >
+                ›
+              </button>
+            </form>
             <div className="w-px h-3.5 bg-gray-200 mx-1" />
           </>
         )}
@@ -198,55 +298,52 @@ export default function PdfViewer({
 
       <PdfLoader workerSrc={WORKER_SRC} url={url} beforeLoad={<Spinner />}>
         {(pdfDocument) => (
-          <PdfHighlighter
-            ref={setHighlighterRef}
-            pdfDocument={pdfDocument}
-            highlights={highlights}
-            pdfScaleValue={scale}
-            onScrollChange={() => {}}
-            scrollRef={(fn) => {
-              scrollRef.current = fn;
-              scheduleHighlightLayerRender();
-              if (cleanupPageTracking.current) return;
-              const viewer = highlighterRef.current?.viewer;
-              type InternalViewer = {
-                pdfDocument?: { numPages?: number };
-                eventBus?: {
-                  on(e: string, h: (ev: { pageNumber: number }) => void): void;
-                  off(e: string, h: (ev: { pageNumber: number }) => void): void;
+          <>
+            <PdfDocumentState totalPages={pdfDocument.numPages} onReady={handlePdfReady} />
+            {highlightsReady ? (
+              <PdfHighlighter
+              ref={setHighlighterRef}
+              pdfDocument={pdfDocument}
+              highlights={highlights}
+              pdfScaleValue={scale}
+              onScrollChange={() => {}}
+              scrollRef={(fn) => {
+                scrollRef.current = fn;
+                if (cleanupPageTracking.current) return;
+                const viewer = highlighterRef.current?.viewer as PdfViewerLike | undefined;
+                syncViewerPageState();
+
+                const eventBus = viewer?.eventBus;
+                const scrollContainer = viewer?.container;
+                const handler = ({ pageNumber }: { pageNumber: number }) => {
+                  updateCurrentPage(pageNumber);
                 };
-              };
-              const internal = viewer as unknown as InternalViewer;
-              // 전체 페이지 수 — 렌더 중 setState를 피하기 위해 여기서 설정
-              const numPages = internal?.pdfDocument?.numPages;
-              if (numPages) setTotalPages(numPages);
-              // pdfjs EventBus pagechanging으로 현재 페이지 추적
-              const eventBus = internal?.eventBus;
-              if (!eventBus) return;
-              const handler = ({ pageNumber }: { pageNumber: number }) => {
-                setCurrentPage(pageNumber);
-                onPageChange?.(pageNumber);
-              };
-              eventBus.on("pagechanging", handler);
-              cleanupPageTracking.current = () => eventBus.off("pagechanging", handler);
-            }}
-            onSelectionFinished={(position, content, hideTipAndSelection) => (
-              <HighlightTip
-                onColorSelect={(color) => {
-                  onHighlightCreate({ position, content, comment: { text: "", emoji: "" } }, color);
-                  hideTipAndSelection();
-                }}
-                onAddToScheme={() => {
-                  onHighlightCreate({ position, content, comment: { text: "", emoji: "" } }, "yellow", true);
-                  hideTipAndSelection();
-                }}
-                onTranslate={() => {
-                  if (content.text) onTranslate(content.text);
-                  hideTipAndSelection();
-                }}
-              />
-            )}
-            highlightTransform={(highlight, _index, setTip, hideTip, _vts, _ss, isScrolledTo) => {
+                const scrollHandler = () => syncViewerPageState();
+
+                eventBus?.on("pagechanging", handler);
+                scrollContainer?.addEventListener("scroll", scrollHandler, { passive: true });
+                cleanupPageTracking.current = () => {
+                  eventBus?.off("pagechanging", handler);
+                  scrollContainer?.removeEventListener("scroll", scrollHandler);
+                };
+              }}
+              onSelectionFinished={(position, content, hideTipAndSelection) => (
+                <HighlightTip
+                  onColorSelect={(color) => {
+                    onHighlightCreate({ position, content, comment: { text: "", emoji: "" } }, color);
+                    hideTipAndSelection();
+                  }}
+                  onAddToScheme={() => {
+                    onHighlightCreate({ position, content, comment: { text: "", emoji: "" } }, "yellow", true);
+                    hideTipAndSelection();
+                  }}
+                  onTranslate={() => {
+                    if (content.text) onTranslate(content.text);
+                    hideTipAndSelection();
+                  }}
+                />
+              )}
+              highlightTransform={(highlight, _index, setTip, hideTip, _vts, _ss, isScrolledTo) => {
               const appHighlight = getHighlightById(highlight.id) ?? {
                 ...highlight,
                 color: "yellow" as HighlightColor,
@@ -313,9 +410,13 @@ export default function PdfViewer({
                   </div>
                 </Popup>
               );
-            }}
-            enableAreaSelection={(e) => e.altKey}
-          />
+              }}
+              enableAreaSelection={(e) => e.altKey}
+              />
+            ) : (
+              <Spinner />
+            )}
+          </>
         )}
       </PdfLoader>
     </div>
@@ -328,6 +429,20 @@ function Spinner() {
       <div className="text-gray-400 text-sm">PDF 로딩 중...</div>
     </div>
   );
+}
+
+function PdfDocumentState({
+  totalPages,
+  onReady,
+}: {
+  totalPages: number;
+  onReady: (totalPages: number) => void;
+}) {
+  useEffect(() => {
+    onReady(totalPages);
+  }, [totalPages, onReady]);
+
+  return null;
 }
 
 // react-pdf-highlighter의 Popup이 popupContent에 onUpdate 같은 내부 prop을 주입하는데
