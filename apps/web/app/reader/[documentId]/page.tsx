@@ -22,7 +22,7 @@ export default function ReaderPage() {
   const { documentId } = useParams<{ documentId: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { highlights, setHighlights, addHighlight, selectHighlight } = useHighlightStore();
+  const { highlights, setHighlights, addHighlight, selectHighlight, updateHighlight, removeHighlight } = useHighlightStore();
   const { setItems } = useSchemeStore();
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [translateText, setTranslateText] = useState<string | null>(null);
@@ -62,6 +62,17 @@ export default function ReaderPage() {
   });
   useEffect(() => { if (collectionData?.items) setItems(collectionData.items); }, [collectionData, setItems]);
 
+  async function handleHighlightUpdate(id: string, color: HighlightColor) {
+    updateHighlight(id, { color });
+    await api.patch(`/highlights/${id}`, { color });
+  }
+
+  async function handleHighlightDelete(id: string) {
+    removeHighlight(id);
+    await api.delete(`/highlights/${id}`);
+    queryClient.invalidateQueries({ queryKey: ["collection", documentId] });
+  }
+
   async function handleHighlightCreate(highlight: NewHighlight, color: HighlightColor, addToScheme = false) {
     const { data } = await api.post(`/documents/${documentId}/highlights`, {
       position: highlight.position,
@@ -95,6 +106,8 @@ export default function ReaderPage() {
             url={pdfUrl}
             highlights={highlights as AppHighlight[]}
             onHighlightCreate={handleHighlightCreate}
+            onHighlightUpdate={handleHighlightUpdate}
+            onHighlightDelete={handleHighlightDelete}
             onTranslate={(text) => setTranslateText(text)}
             onHighlightClick={(h) => selectHighlight(h)}
           />

@@ -6,7 +6,7 @@ import { useCallback, useRef } from "react";
 import { PdfHighlighter, PdfLoader, Highlight, Popup } from "react-pdf-highlighter";
 import type { IHighlight, NewHighlight } from "react-pdf-highlighter";
 
-import HighlightTip from "./HighlightTip";
+import HighlightTip, { HighlightEditTip } from "./HighlightTip";
 import type { HighlightColor } from "@/types";
 
 const WORKER_SRC = "/pdf.worker.min.mjs";
@@ -25,6 +25,8 @@ interface Props {
   url: string;
   highlights: AppHighlight[];
   onHighlightCreate: (highlight: NewHighlight, color: HighlightColor, addToScheme?: boolean) => void;
+  onHighlightUpdate: (id: string, color: HighlightColor) => void;
+  onHighlightDelete: (id: string) => void;
   onTranslate: (text: string) => void;
   onHighlightClick: (highlight: AppHighlight) => void;
 }
@@ -33,6 +35,8 @@ export default function PdfViewer({
   url,
   highlights,
   onHighlightCreate,
+  onHighlightUpdate,
+  onHighlightDelete,
   onTranslate,
   onHighlightClick,
 }: Props) {
@@ -100,9 +104,23 @@ export default function PdfViewer({
                   key={highlight.id}
                 >
                   <div
-                    onClick={() => onHighlightClick(appHighlight as AppHighlight)}
+                    onClick={() => {
+                      onHighlightClick(appHighlight as AppHighlight);
+                      setTip(highlight, () => (
+                        <HighlightEditTip
+                          currentColor={color}
+                          onColorChange={(newColor) => {
+                            onHighlightUpdate(highlight.id, newColor);
+                            hideTip();
+                          }}
+                          onDelete={() => {
+                            onHighlightDelete(highlight.id);
+                            hideTip();
+                          }}
+                        />
+                      ));
+                    }}
                     style={{
-                      // 색상을 CSS 변수로 주입해 Highlight 내부 rect에 적용
                       ["--highlight-color" as string]: style,
                     }}
                     className="highlight-color-override"

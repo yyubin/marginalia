@@ -19,7 +19,6 @@ interface Props {
 export default function HighlightTip({ onColorSelect, onAddToScheme, onTranslate }: Props) {
   return (
     <div className="flex flex-col gap-1 bg-white border shadow-lg rounded-xl p-2 min-w-[160px]">
-      {/* 색상 팔레트 */}
       <div className="flex gap-1.5 justify-center px-1 py-0.5">
         {COLORS.map(({ color, bg }) => (
           <button
@@ -34,7 +33,6 @@ export default function HighlightTip({ onColorSelect, onAddToScheme, onTranslate
 
       <hr className="border-gray-100" />
 
-      {/* 액션 버튼 */}
       <button
         onClick={onAddToScheme}
         className="text-xs text-left px-2 py-1 rounded hover:bg-gray-100 text-gray-700"
@@ -46,6 +44,41 @@ export default function HighlightTip({ onColorSelect, onAddToScheme, onTranslate
         className="text-xs text-left px-2 py-1 rounded hover:bg-gray-100 text-gray-700"
       >
         번역
+      </button>
+    </div>
+  );
+}
+
+interface EditProps {
+  currentColor: HighlightColor;
+  onColorChange: (color: HighlightColor) => void;
+  onDelete: () => void;
+}
+
+export function HighlightEditTip({ currentColor, onColorChange, onDelete }: EditProps) {
+  return (
+    <div className="flex flex-col gap-1 bg-white border shadow-lg rounded-xl p-2 min-w-[160px]">
+      <div className="flex gap-1.5 justify-center px-1 py-0.5">
+        {COLORS.map(({ color, bg }) => (
+          <button
+            key={color}
+            onClick={() => onColorChange(color)}
+            className={`w-6 h-6 rounded-full border-2 hover:scale-110 transition-transform shadow ${
+              color === currentColor ? "border-gray-500 scale-110" : "border-white"
+            }`}
+            style={{ backgroundColor: bg }}
+            title={color}
+          />
+        ))}
+      </div>
+
+      <hr className="border-gray-100" />
+
+      <button
+        onClick={onDelete}
+        className="text-xs text-left px-2 py-1 rounded hover:bg-red-50 text-red-500"
+      >
+        하이라이트 삭제
       </button>
     </div>
   );

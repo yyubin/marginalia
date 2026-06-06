@@ -20,7 +20,15 @@ export const useHighlightStore = create<HighlightStore>((set) => ({
   updateHighlight: (id, updates) =>
     set((s) => ({
       highlights: s.highlights.map((h) => (h.id === id ? { ...h, ...updates } : h)),
+      selectedHighlight:
+        s.selectedHighlight?.id === id
+          ? { ...s.selectedHighlight, ...updates }
+          : s.selectedHighlight,
     })),
-  removeHighlight: (id) => set((s) => ({ highlights: s.highlights.filter((h) => h.id !== id) })),
+  removeHighlight: (id) =>
+    set((s) => ({
+      highlights: s.highlights.filter((h) => h.id !== id),
+      selectedHighlight: s.selectedHighlight?.id === id ? null : s.selectedHighlight,
+    })),
   selectHighlight: (highlight) => set({ selectedHighlight: highlight }),
 }));
