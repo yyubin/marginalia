@@ -14,7 +14,7 @@ from app.schemas.note import NoteCreate, NoteResponse, NoteUpdate
 router = APIRouter(tags=["notes"])
 
 
-@router.get("/highlights/{highlight_id}/note", response_model=NoteResponse)
+@router.get("/highlights/{highlight_id}/note", response_model=NoteResponse | None)
 async def get_note(
     highlight_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -25,8 +25,6 @@ async def get_note(
         select(Note).where(Note.highlight_id == highlight_id, Note.user_id == current_user.id)
     )
     note = result.scalar_one_or_none()
-    if not note:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
     return note
 
 
