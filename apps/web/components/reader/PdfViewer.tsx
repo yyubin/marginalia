@@ -5,6 +5,8 @@ import "react-pdf-highlighter/dist/style.css";
 import { useCallback, useRef } from "react";
 import { PdfHighlighter, PdfLoader, Highlight, Popup } from "react-pdf-highlighter";
 import type { IHighlight, NewHighlight } from "react-pdf-highlighter";
+// PdfHighlighter는 class component이므로 ref로 viewer 접근 가능
+type PdfHighlighterInstance = InstanceType<typeof PdfHighlighter>;
 
 import HighlightTip, { HighlightEditTip } from "./HighlightTip";
 import type { HighlightColor } from "@/types";
@@ -29,6 +31,7 @@ interface Props {
   onHighlightDelete: (id: string) => void;
   onTranslate: (text: string) => void;
   onHighlightClick: (highlight: AppHighlight) => void;
+  onPageChange?: (page: number) => void;
 }
 
 export default function PdfViewer({
@@ -39,8 +42,10 @@ export default function PdfViewer({
   onHighlightDelete,
   onTranslate,
   onHighlightClick,
+  onPageChange,
 }: Props) {
   const scrollRef = useRef<(h: AppHighlight) => void>(() => {});
+  const highlighterRef = useRef<PdfHighlighterInstance>(null);
 
   const getHighlightById = useCallback(
     (id: string) => highlights.find((h) => h.id === id),
@@ -52,10 +57,14 @@ export default function PdfViewer({
       <PdfLoader workerSrc={WORKER_SRC} url={url} beforeLoad={<Spinner />}>
         {(pdfDocument) => (
           <PdfHighlighter
+            ref={highlighterRef}
             pdfDocument={pdfDocument}
             highlights={highlights}
             pdfScaleValue="page-width"
-            onScrollChange={() => {}}
+            onScrollChange={() => {
+              const page = highlighterRef.current?.viewer?.currentPageNumber;
+              if (page) onPageChange?.(page);
+            }}
             scrollRef={(fn) => { scrollRef.current = fn; }}
             onSelectionFinished={(position, content, hideTipAndSelection, transformSelection) => (
               <HighlightTip

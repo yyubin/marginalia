@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { NewHighlight } from "react-pdf-highlighter";
 
@@ -12,10 +12,9 @@ import { useSchemeStore } from "@/store/schemeStore";
 import SchemePanel from "@/components/reader/SchemePanel";
 import NotesPanel from "@/components/reader/NotesPanel";
 import TranslatePanel from "@/components/reader/TranslatePanel";
-import type { HighlightColor } from "@/types";
+import type { HighlightColor, UserSettings } from "@/types";
 import type { AppHighlight } from "@/components/reader/PdfViewer";
 
-// SSR 비활성화 — pdfjs는 browser-only
 const PdfViewer = dynamic(() => import("@/components/reader/PdfViewer"), { ssr: false });
 
 export default function ReaderPage() {
@@ -27,6 +26,10 @@ export default function ReaderPage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [translateText, setTranslateText] = useState<string | null>(null);
   const [docTitle, setDocTitle] = useState("PDF 뷰어");
+
+  // 하이라이트 점진적 로드를 위한 상태
+  const loadedUntilPageRef = useRef(0); // 마지막으로 로드한 PDF 페이지 번호
+  const isLoadingMoreRef = useRef(false);
 
   useEffect(() => {
     if (!localStorage.getItem("access_token")) router.push("/login");
@@ -46,14 +49,28 @@ export default function ReaderPage() {
   });
   useEffect(() => { if (urlData?.url) setPdfUrl(urlData.url); }, [urlData]);
 
-  const { data: highlightData } = useQuery<AppHighlight[]>({
-    queryKey: ["highlights", documentId],
-    queryFn: () => api.get(`/documents/${documentId}/highlights`).then((r) =>
-      r.data.map((h: AppHighlight) => ({ ...h, comment: { text: "", emoji: "" } }))
-    ),
-    enabled: !!documentId,
+  const { data: settings } = useQuery<UserSettings>({
+    queryKey: ["settings"],
+    queryFn: () => api.get("/settings").then((r) => r.data),
   });
-  useEffect(() => { if (highlightData) setHighlights(highlightData); }, [highlightData, setHighlights]);
+
+  // 초기 하이라이트 로드 (settings 로드 완료 후)
+  useEffect(() => {
+    if (!documentId || !settings) return;
+    const limit = settings.highlights_per_page;
+
+    api.get(`/documents/${documentId}/highlights`, { params: { pdf_page_from: 1, limit } })
+      .then((r) => {
+        const data: AppHighlight[] = r.data.map((h: AppHighlight) => ({
+          ...h,
+          comment: { text: "", emoji: "" },
+        }));
+        setHighlights(data);
+        loadedUntilPageRef.current = data.length > 0
+          ? Math.max(...data.map((h) => (h.position as { pageNumber: number }).pageNumber))
+          : Infinity;
+      });
+  }, [documentId, settings, setHighlights]);
 
   const { data: collectionData } = useQuery({
     queryKey: ["collection", documentId],
@@ -61,6 +78,39 @@ export default function ReaderPage() {
     enabled: !!documentId,
   });
   useEffect(() => { if (collectionData?.items) setItems(collectionData.items); }, [collectionData, setItems]);
+
+  // PDF 현재 페이지가 바뀌면 추가 하이라이트를 로드
+  const handlePageChange = useCallback(async (currentPage: number) => {
+    if (!settings) return;
+    if (isLoadingMoreRef.current) return;
+    if (currentPage <= loadedUntilPageRef.current) return; // 이미 로드된 범위
+
+    isLoadingMoreRef.current = true;
+    try {
+      const pdf_page_from = loadedUntilPageRef.current + 1;
+      const limit = settings.highlights_per_page;
+      const { data } = await api.get(`/documents/${documentId}/highlights`, {
+        params: { pdf_page_from, limit },
+      });
+
+      const newHighlights: AppHighlight[] = data.map((h: AppHighlight) => ({
+        ...h,
+        comment: { text: "", emoji: "" },
+      }));
+
+      newHighlights.forEach((h) => addHighlight(h));
+
+      if (newHighlights.length > 0) {
+        loadedUntilPageRef.current = Math.max(
+          ...newHighlights.map((h) => (h.position as { pageNumber: number }).pageNumber)
+        );
+      } else {
+        loadedUntilPageRef.current = Infinity; // 더 이상 로드할 게 없음
+      }
+    } finally {
+      isLoadingMoreRef.current = false;
+    }
+  }, [documentId, settings, addHighlight]);
 
   async function handleHighlightUpdate(id: string, color: HighlightColor) {
     updateHighlight(id, { color });
@@ -70,7 +120,6 @@ export default function ReaderPage() {
   async function handleHighlightDelete(id: string) {
     removeHighlight(id);
     await api.delete(`/highlights/${id}`);
-    queryClient.invalidateQueries({ queryKey: ["highlights", documentId] });
     queryClient.invalidateQueries({ queryKey: ["collection", documentId] });
   }
 
@@ -80,7 +129,8 @@ export default function ReaderPage() {
       content: highlight.content,
       color,
     });
-    queryClient.invalidateQueries({ queryKey: ["highlights", documentId] });
+    // invalidate 대신 직접 추가 (점진적 로드 상태 유지)
+    addHighlight({ ...data, comment: { text: "", emoji: "" } });
 
     if (addToScheme) {
       await api.post(`/documents/${documentId}/collection/items`, { highlight_id: data.id });
@@ -101,7 +151,6 @@ export default function ReaderPage() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* PDF 뷰어 */}
         {pdfUrl ? (
           <PdfViewer
             url={pdfUrl}
@@ -111,6 +160,7 @@ export default function ReaderPage() {
             onHighlightDelete={handleHighlightDelete}
             onTranslate={(text) => setTranslateText(text)}
             onHighlightClick={(h) => selectHighlight(h)}
+            onPageChange={handlePageChange}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
@@ -118,7 +168,6 @@ export default function ReaderPage() {
           </div>
         )}
 
-        {/* 우측 패널 */}
         <div className="w-80 flex flex-col border-l bg-white overflow-hidden shrink-0">
           <SchemePanel documentId={documentId} />
           {translateText ? (

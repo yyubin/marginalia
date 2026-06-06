@@ -47,6 +47,10 @@ export interface CollectionItem {
   highlight: Highlight;
 }
 
+export interface UserSettings {
+  highlights_per_page: number;
+}
+
 export interface Collection {
   id: string;
   document_id: string;

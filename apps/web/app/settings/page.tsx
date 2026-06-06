@@ -1,0 +1,94 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import type { UserSettings } from "@/types";
+
+export default function SettingsPage() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [perPage, setPerPage] = useState<number>(50);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!localStorage.getItem("access_token")) router.push("/login");
+  }, [router]);
+
+  const { data: settings, isLoading } = useQuery<UserSettings>({
+    queryKey: ["settings"],
+    queryFn: () => api.get("/settings").then((r) => r.data),
+  });
+
+  useEffect(() => {
+    if (settings) setPerPage(settings.highlights_per_page);
+  }, [settings]);
+
+  const mutation = useMutation({
+    mutationFn: (highlights_per_page: number) =>
+      api.patch("/settings", { highlights_per_page }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    },
+  });
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b px-6 py-3 flex items-center gap-4">
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="text-sm text-gray-500 hover:text-black"
+        >
+          ← 대시보드
+        </button>
+        <h1 className="text-sm font-semibold">설정</h1>
+      </header>
+
+      <div className="max-w-xl mx-auto py-10 px-6 space-y-8">
+        <section className="bg-white rounded-xl border p-6 space-y-4">
+          <h2 className="text-sm font-semibold">리더 설정</h2>
+
+          <div className="space-y-2">
+            <label className="text-sm text-gray-700">
+              패널 당 최대 하이라이트 수
+              <span className="text-xs text-gray-400 ml-2">
+                (PDF 현재 페이지 기준으로 한 번에 불러올 하이라이트 개수)
+              </span>
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={10}
+                max={500}
+                step={10}
+                value={perPage}
+                onChange={(e) => setPerPage(Number(e.target.value))}
+                className="w-28 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                disabled={isLoading}
+              />
+              <span className="text-xs text-gray-400">개 (10 ~ 500)</span>
+            </div>
+            <p className="text-xs text-gray-400">
+              문서에 하이라이트가 많을 경우 낮게 설정하면 성능이 향상됩니다.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 pt-2">
+            <Button
+              size="sm"
+              onClick={() => mutation.mutate(perPage)}
+              disabled={mutation.isPending || perPage < 10 || perPage > 500}
+            >
+              저장
+            </Button>
+            {saved && <span className="text-xs text-green-500">저장되었습니다</span>}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}

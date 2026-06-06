@@ -55,6 +55,9 @@ export default function DashboardPage() {
           <Button onClick={() => fileInputRef.current?.click()} disabled={uploadMutation.isPending}>
             {uploadMutation.isPending ? "업로드 중..." : "PDF 업로드"}
           </Button>
+          <Button variant="outline" onClick={() => router.push("/settings")}>
+            설정
+          </Button>
           <Button variant="outline" onClick={handleLogout}>
             로그아웃
           </Button>
