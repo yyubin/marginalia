@@ -50,9 +50,14 @@ export default function PdfViewer({
 }: Props) {
   const scrollRef = useRef<(h: AppHighlight) => void>(() => {});
   const highlighterRef = useRef<PdfHighlighterInstance>(null);
+  const cleanupPageTracking = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => { cleanupPageTracking.current?.(); }, []);
   // pdfScaleValue prop이 ResizeObserver 트리거 시 재적용되므로
   // 직접 조작과 함께 prop도 동기화해야 스케일이 유지됨
   const [scale, setScale] = useState<string>("page-width");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
 
   const getHighlightById = useCallback(
     (id: string) => highlights.find((h) => h.id === id),
@@ -98,8 +103,16 @@ export default function PdfViewer({
 
   return (
     <div className="flex-1 overflow-auto relative" style={{ background: "#e5e7eb" }}>
-      {/* 줌 컨트롤 */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-white border shadow-lg rounded-full px-2 py-1">
+      {/* 하단 컨트롤 바: 페이지 정보 + 줌 */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-white border shadow-lg rounded-full px-3 py-1">
+        {totalPages > 0 && (
+          <>
+            <span className="text-xs text-gray-500 tabular-nums px-1">
+              {currentPage} / {totalPages}
+            </span>
+            <div className="w-px h-3.5 bg-gray-200 mx-1" />
+          </>
+        )}
         <button
           onClick={zoomOut}
           className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-700 text-lg leading-none"
@@ -109,7 +122,7 @@ export default function PdfViewer({
         </button>
         <button
           onClick={resetZoom}
-          className="min-w-[52px] text-xs text-gray-600 hover:bg-gray-100 rounded-full px-2 py-1 text-center"
+          className="min-w-[48px] text-xs text-gray-600 hover:bg-gray-100 rounded-full px-2 py-1 text-center"
           title="너비 맞춤으로 초기화"
         >
           {scaleLabel}
@@ -130,11 +143,32 @@ export default function PdfViewer({
             pdfDocument={pdfDocument}
             highlights={highlights}
             pdfScaleValue={scale}
-            onScrollChange={() => {
-              const page = highlighterRef.current?.viewer?.currentPageNumber;
-              if (page) onPageChange?.(page);
+            onScrollChange={() => {}}
+            scrollRef={(fn) => {
+              scrollRef.current = fn;
+              if (cleanupPageTracking.current) return;
+              const viewer = highlighterRef.current?.viewer;
+              type InternalViewer = {
+                pdfDocument?: { numPages?: number };
+                eventBus?: {
+                  on(e: string, h: (ev: { pageNumber: number }) => void): void;
+                  off(e: string, h: (ev: { pageNumber: number }) => void): void;
+                };
+              };
+              const internal = viewer as unknown as InternalViewer;
+              // 전체 페이지 수 — 렌더 중 setState를 피하기 위해 여기서 설정
+              const numPages = internal?.pdfDocument?.numPages;
+              if (numPages) setTotalPages(numPages);
+              // pdfjs EventBus pagechanging으로 현재 페이지 추적
+              const eventBus = internal?.eventBus;
+              if (!eventBus) return;
+              const handler = ({ pageNumber }: { pageNumber: number }) => {
+                setCurrentPage(pageNumber);
+                onPageChange?.(pageNumber);
+              };
+              eventBus.on("pagechanging", handler);
+              cleanupPageTracking.current = () => eventBus.off("pagechanging", handler);
             }}
-            scrollRef={(fn) => { scrollRef.current = fn; }}
             onSelectionFinished={(position, content, hideTipAndSelection, transformSelection) => (
               <HighlightTip
                 onColorSelect={(color) => {

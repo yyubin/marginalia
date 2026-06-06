@@ -37,7 +37,12 @@ export default function SchemePanel({ documentId }: Props) {
         {sorted.map((item, idx) => (
           <div key={item.id} className="px-4 py-3 flex gap-2 group hover:bg-gray-50">
             <span className="text-xs text-gray-300 shrink-0 mt-0.5">{idx + 1}</span>
-            <p className="text-xs text-gray-700 flex-1 leading-relaxed">{item.highlight.content.text}</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-700 leading-relaxed">{item.highlight.content.text}</p>
+              <span className="text-[10px] text-gray-400 mt-0.5 block">
+                p. {(item.highlight.position as { pageNumber: number }).pageNumber}
+              </span>
+            </div>
             <button
               className="text-xs text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 shrink-0"
               onClick={() => {

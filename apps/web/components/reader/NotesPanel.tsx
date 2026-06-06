@@ -72,7 +72,10 @@ export default function NotesPanel({ documentId }: Props) {
         {selectedHighlight && (
           <div className="space-y-3">
             <div className="text-xs text-gray-500 bg-gray-50 rounded p-2 leading-relaxed">
-              "{selectedHighlight.content.text}"
+              <p>"{selectedHighlight.content.text}"</p>
+              <span className="text-[10px] text-gray-400 mt-1 block">
+                p. {(selectedHighlight.position as { pageNumber: number }).pageNumber}
+              </span>
             </div>
 
             {note && !editing ? (
