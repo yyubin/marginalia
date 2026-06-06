@@ -1,0 +1,21 @@
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel
+
+
+class DocumentResponse(BaseModel):
+    id: UUID
+    title: str
+    file_key: str
+    file_size: int | None
+    page_count: int | None
+    last_opened: datetime | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DocumentUrlResponse(BaseModel):
+    url: str
+    expires_in: int
