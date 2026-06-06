@@ -93,9 +93,7 @@ export default function PdfViewer({
               return (
                 <Popup
                   popupContent={
-                    <div className="bg-white border shadow rounded-lg px-3 py-1.5 text-xs text-gray-600 max-w-xs truncate">
-                      {highlight.content.text ?? "이미지 하이라이트"}
-                    </div>
+                    <HoverPreview text={highlight.content.text ?? "이미지 하이라이트"} />
                   }
                   onMouseOver={(popupContent) =>
                     setTip(highlight, () => popupContent)
@@ -142,6 +140,17 @@ function Spinner() {
   return (
     <div className="flex-1 flex items-center justify-center h-full">
       <div className="text-gray-400 text-sm">PDF 로딩 중...</div>
+    </div>
+  );
+}
+
+// react-pdf-highlighter의 Popup이 popupContent에 onUpdate 같은 내부 prop을 주입하는데
+// 이게 DOM까지 전달되면 React 경고가 발생하므로 명시적으로 걸러냄
+function HoverPreview({ text, ...rest }: { text: string } & Record<string, unknown>) {
+  void rest;
+  return (
+    <div className="bg-white border shadow rounded-lg px-3 py-1.5 text-xs text-gray-600 max-w-xs truncate">
+      {text}
     </div>
   );
 }

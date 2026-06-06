@@ -70,6 +70,7 @@ export default function ReaderPage() {
   async function handleHighlightDelete(id: string) {
     removeHighlight(id);
     await api.delete(`/highlights/${id}`);
+    queryClient.invalidateQueries({ queryKey: ["highlights", documentId] });
     queryClient.invalidateQueries({ queryKey: ["collection", documentId] });
   }
 

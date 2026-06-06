@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useHighlightStore } from "@/store/highlightStore";
 import { Button } from "@/components/ui/button";
@@ -17,13 +17,21 @@ export default function NotesPanel({ documentId }: Props) {
   const [noteContent, setNoteContent] = useState("");
   const [editing, setEditing] = useState(false);
 
-  const note: Note | undefined = selectedHighlight?.note;
+  const noteQueryKey = ["note", selectedHighlight?.id];
+
+  const { data: note } = useQuery<Note>({
+    queryKey: noteQueryKey,
+    queryFn: () =>
+      api.get(`/highlights/${selectedHighlight!.id}/note`).then((r) => r.data),
+    enabled: !!selectedHighlight,
+    retry: false,
+  });
 
   const createMutation = useMutation({
     mutationFn: (content: string) =>
       api.post(`/highlights/${selectedHighlight!.id}/note`, { content }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["highlights", documentId] });
+      queryClient.invalidateQueries({ queryKey: noteQueryKey });
       setNoteContent("");
       setEditing(false);
     },
@@ -33,15 +41,22 @@ export default function NotesPanel({ documentId }: Props) {
     mutationFn: ({ id, content }: { id: string; content: string }) =>
       api.patch(`/notes/${id}`, { content }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["highlights", documentId] });
+      queryClient.invalidateQueries({ queryKey: noteQueryKey });
       setEditing(false);
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/notes/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["highlights", documentId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: noteQueryKey }),
   });
+
+  const highlightId = selectedHighlight?.id;
+
+  useEffect(() => {
+    setEditing(false);
+    setNoteContent("");
+  }, [highlightId]);
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -76,6 +91,7 @@ export default function NotesPanel({ documentId }: Props) {
                   <button
                     className="text-xs text-red-400 hover:text-red-600"
                     onClick={() => deleteMutation.mutate(note.id)}
+                    disabled={deleteMutation.isPending}
                   >
                     삭제
                   </button>
@@ -84,6 +100,7 @@ export default function NotesPanel({ documentId }: Props) {
             ) : (
               <div className="space-y-2">
                 <textarea
+                  key={highlightId}
                   rows={4}
                   placeholder="메모를 입력하세요..."
                   value={noteContent}
@@ -100,12 +117,19 @@ export default function NotesPanel({ documentId }: Props) {
                         createMutation.mutate(noteContent);
                       }
                     }}
-                    disabled={!noteContent.trim()}
+                    disabled={!noteContent.trim() || createMutation.isPending || updateMutation.isPending}
                   >
                     저장
                   </Button>
                   {editing && (
-                    <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditing(false);
+                        setNoteContent("");
+                      }}
+                    >
                       취소
                     </Button>
                   )}
