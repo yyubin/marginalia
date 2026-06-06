@@ -22,8 +22,7 @@ async def get_collection(
     current_user: User = Depends(get_current_user),
 ):
     collection = await _get_or_create_collection(db, doc_id, current_user.id)
-    await db.refresh(collection, ["items"])
-    return collection
+    return await _load_collection(db, collection.id)
 
 
 @router.post("/documents/{doc_id}/collection/items", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
@@ -59,8 +58,7 @@ async def add_collection_item(
     )
     db.add(item)
     await db.commit()
-    await db.refresh(collection, ["items"])
-    return collection
+    return await _load_collection(db, collection.id)
 
 
 @router.patch("/documents/{doc_id}/collection/items", response_model=CollectionResponse)
@@ -84,8 +82,7 @@ async def reorder_collection_items(
             item.position = item_data["position"]
 
     await db.commit()
-    await db.refresh(collection, ["items"])
-    return collection
+    return await _load_collection(db, collection.id)
 
 
 @router.delete("/collection/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -106,6 +103,16 @@ async def remove_collection_item(
     await db.commit()
 
 
+async def _load_collection(db: AsyncSession, collection_id: uuid.UUID) -> Collection:
+    result = await db.execute(
+        select(Collection)
+        .options(selectinload(Collection.items).selectinload(CollectionItem.highlight))
+        .where(Collection.id == collection_id)
+        .order_by(Collection.id)
+    )
+    return result.scalar_one()
+
+
 async def _get_or_create_collection(db: AsyncSession, doc_id: uuid.UUID, user_id: uuid.UUID) -> Collection:
     doc_result = await db.execute(
         select(Document).where(Document.id == doc_id, Document.user_id == user_id)
@@ -114,9 +121,7 @@ async def _get_or_create_collection(db: AsyncSession, doc_id: uuid.UUID, user_id
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     result = await db.execute(
-        select(Collection)
-        .options(selectinload(Collection.items).selectinload(CollectionItem.highlight))
-        .where(Collection.document_id == doc_id, Collection.user_id == user_id)
+        select(Collection).where(Collection.document_id == doc_id, Collection.user_id == user_id)
     )
     collection = result.scalar_one_or_none()
     if not collection:

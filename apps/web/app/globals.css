@@ -1,4 +1,12 @@
 @import "tailwindcss";
+
+/* react-pdf-highlighter 하이라이트 색상 오버라이드 */
+.highlight-color-override .Highlight__part {
+  background-color: var(--highlight-color, rgba(255, 237, 100, 0.45)) !important;
+}
+.highlight-color-override .Highlight--scrolledTo .Highlight__part {
+  filter: brightness(0.85);
+}
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 

@@ -1,89 +1,121 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
+import type { NewHighlight } from "react-pdf-highlighter";
+
 import { api } from "@/lib/api";
 import { useHighlightStore } from "@/store/highlightStore";
 import { useSchemeStore } from "@/store/schemeStore";
 import SchemePanel from "@/components/reader/SchemePanel";
 import NotesPanel from "@/components/reader/NotesPanel";
-import type { Highlight } from "@/types";
+import TranslatePanel from "@/components/reader/TranslatePanel";
+import type { HighlightColor } from "@/types";
+import type { AppHighlight } from "@/components/reader/PdfViewer";
+
+// SSR 비활성화 — pdfjs는 browser-only
+const PdfViewer = dynamic(() => import("@/components/reader/PdfViewer"), { ssr: false });
 
 export default function ReaderPage() {
   const { documentId } = useParams<{ documentId: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { highlights, setHighlights, addHighlight, removeHighlight } = useHighlightStore();
+  const { highlights, setHighlights, addHighlight, selectHighlight } = useHighlightStore();
   const { setItems } = useSchemeStore();
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [translateText, setTranslateText] = useState<string | null>(null);
+  const [docTitle, setDocTitle] = useState("PDF 뷰어");
 
   useEffect(() => {
     if (!localStorage.getItem("access_token")) router.push("/login");
   }, [router]);
 
-  // PDF presigned URL 조회
+  const { data: docData } = useQuery({
+    queryKey: ["document", documentId],
+    queryFn: () => api.get(`/documents/${documentId}`).then((r) => r.data),
+    enabled: !!documentId,
+  });
+  useEffect(() => { if (docData?.title) setDocTitle(docData.title); }, [docData]);
+
   const { data: urlData } = useQuery({
     queryKey: ["document-url", documentId],
     queryFn: () => api.get(`/documents/${documentId}/url`).then((r) => r.data),
     enabled: !!documentId,
   });
+  useEffect(() => { if (urlData?.url) setPdfUrl(urlData.url); }, [urlData]);
 
-  useEffect(() => {
-    if (urlData?.url) setPdfUrl(urlData.url);
-  }, [urlData]);
-
-  // 하이라이트 목록 조회
-  const { data: highlightData } = useQuery<Highlight[]>({
+  const { data: highlightData } = useQuery<AppHighlight[]>({
     queryKey: ["highlights", documentId],
-    queryFn: () => api.get(`/documents/${documentId}/highlights`).then((r) => r.data),
+    queryFn: () => api.get(`/documents/${documentId}/highlights`).then((r) =>
+      r.data.map((h: AppHighlight) => ({ ...h, comment: { text: "", emoji: "" } }))
+    ),
     enabled: !!documentId,
   });
+  useEffect(() => { if (highlightData) setHighlights(highlightData); }, [highlightData, setHighlights]);
 
-  useEffect(() => {
-    if (highlightData) setHighlights(highlightData);
-  }, [highlightData, setHighlights]);
-
-  // 스킴패널 조회
   const { data: collectionData } = useQuery({
     queryKey: ["collection", documentId],
     queryFn: () => api.get(`/documents/${documentId}/collection`).then((r) => r.data),
     enabled: !!documentId,
   });
+  useEffect(() => { if (collectionData?.items) setItems(collectionData.items); }, [collectionData, setItems]);
 
-  useEffect(() => {
-    if (collectionData?.items) setItems(collectionData.items);
-  }, [collectionData, setItems]);
+  async function handleHighlightCreate(highlight: NewHighlight, color: HighlightColor, addToScheme = false) {
+    const { data } = await api.post(`/documents/${documentId}/highlights`, {
+      position: highlight.position,
+      content: highlight.content,
+      color,
+    });
+    queryClient.invalidateQueries({ queryKey: ["highlights", documentId] });
+
+    if (addToScheme) {
+      await api.post(`/documents/${documentId}/collection/items`, { highlight_id: data.id });
+      queryClient.invalidateQueries({ queryKey: ["collection", documentId] });
+    }
+  }
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
-      {/* Header */}
-      <header className="bg-white border-b px-4 py-2 flex items-center gap-4 shrink-0">
-        <button onClick={() => router.push("/dashboard")} className="text-sm text-gray-500 hover:text-black">
+      <header className="bg-white border-b px-4 py-2 flex items-center gap-4 shrink-0 z-10">
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="text-sm text-gray-500 hover:text-black"
+        >
           ← 대시보드
         </button>
-        <h1 className="text-sm font-semibold truncate flex-1">PDF 뷰어</h1>
+        <h1 className="text-sm font-semibold truncate flex-1">{docTitle}</h1>
       </header>
 
-      {/* Main layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* PDF Viewer area */}
-        <div className="flex-1 overflow-auto bg-gray-200 flex items-start justify-center p-4">
-          {pdfUrl ? (
-            <iframe
-              src={pdfUrl}
-              className="w-full max-w-4xl h-full min-h-[800px] rounded shadow-lg bg-white"
-              title="PDF Viewer"
-            />
-          ) : (
-            <div className="text-gray-400 mt-20">PDF 로딩 중...</div>
-          )}
-        </div>
+        {/* PDF 뷰어 */}
+        {pdfUrl ? (
+          <PdfViewer
+            url={pdfUrl}
+            highlights={highlights as AppHighlight[]}
+            onHighlightCreate={handleHighlightCreate}
+            onTranslate={(text) => setTranslateText(text)}
+            onHighlightClick={(h) => selectHighlight(h)}
+          />
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+            PDF 로딩 중...
+          </div>
+        )}
 
-        {/* Right panels */}
+        {/* 우측 패널 */}
         <div className="w-80 flex flex-col border-l bg-white overflow-hidden shrink-0">
           <SchemePanel documentId={documentId} />
-          <NotesPanel documentId={documentId} />
+          {translateText ? (
+            <TranslatePanel
+              text={translateText}
+              onClose={() => setTranslateText(null)}
+              documentId={documentId}
+            />
+          ) : (
+            <NotesPanel documentId={documentId} />
+          )}
         </div>
       </div>
     </div>
