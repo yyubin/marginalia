@@ -9,9 +9,6 @@ import type { UserSettings } from "@/types";
 
 export default function SettingsPage() {
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const [perPage, setPerPage] = useState<number>(50);
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (!localStorage.getItem("access_token")) router.push("/login");
@@ -22,9 +19,30 @@ export default function SettingsPage() {
     queryFn: () => api.get("/settings").then((r) => r.data),
   });
 
-  useEffect(() => {
-    if (settings) setPerPage(settings.highlights_per_page);
-  }, [settings]);
+  const initialPerPage = settings?.highlights_per_page ?? 50;
+
+  return (
+    <SettingsForm
+      key={initialPerPage}
+      initialPerPage={initialPerPage}
+      isLoading={isLoading}
+      onBack={() => router.push("/dashboard")}
+    />
+  );
+}
+
+function SettingsForm({
+  initialPerPage,
+  isLoading,
+  onBack,
+}: {
+  initialPerPage: number;
+  isLoading: boolean;
+  onBack: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [perPage, setPerPage] = useState<number>(initialPerPage);
+  const [saved, setSaved] = useState(false);
 
   const mutation = useMutation({
     mutationFn: (highlights_per_page: number) =>
@@ -40,7 +58,7 @@ export default function SettingsPage() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b px-6 py-3 flex items-center gap-4">
         <button
-          onClick={() => router.push("/dashboard")}
+          onClick={onBack}
           className="text-sm text-gray-500 hover:text-black"
         >
           ← 대시보드

@@ -12,6 +12,7 @@ interface Props {
 }
 
 export default function NotesPanel({ documentId }: Props) {
+  void documentId;
   const { selectedHighlight } = useHighlightStore();
   const queryClient = useQueryClient();
   const [noteContent, setNoteContent] = useState("");
@@ -54,6 +55,8 @@ export default function NotesPanel({ documentId }: Props) {
   const highlightId = selectedHighlight?.id;
 
   useEffect(() => {
+    // Reset the local editor when the selected highlight changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditing(false);
     setNoteContent("");
   }, [highlightId]);
@@ -72,7 +75,7 @@ export default function NotesPanel({ documentId }: Props) {
         {selectedHighlight && (
           <div className="space-y-3">
             <div className="text-xs text-gray-500 bg-gray-50 rounded p-2 leading-relaxed">
-              <p>"{selectedHighlight.content.text}"</p>
+              <p>&quot;{selectedHighlight.content.text}&quot;</p>
               <span className="text-[10px] text-gray-400 mt-1 block">
                 p. {(selectedHighlight.position as { pageNumber: number }).pageNumber}
               </span>

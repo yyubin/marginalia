@@ -23,9 +23,7 @@ export default function ReaderPage() {
   const queryClient = useQueryClient();
   const { highlights, setHighlights, addHighlight, selectHighlight, updateHighlight, removeHighlight } = useHighlightStore();
   const { setItems } = useSchemeStore();
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [translateText, setTranslateText] = useState<string | null>(null);
-  const [docTitle, setDocTitle] = useState("PDF 뷰어");
 
   // 하이라이트 점진적 로드를 위한 상태
   const loadedUntilPageRef = useRef(0); // 마지막으로 로드한 PDF 페이지 번호
@@ -40,14 +38,14 @@ export default function ReaderPage() {
     queryFn: () => api.get(`/documents/${documentId}`).then((r) => r.data),
     enabled: !!documentId,
   });
-  useEffect(() => { if (docData?.title) setDocTitle(docData.title); }, [docData]);
+  const docTitle = docData?.title ?? "PDF 뷰어";
 
   const { data: urlData } = useQuery({
     queryKey: ["document-url", documentId],
     queryFn: () => api.get(`/documents/${documentId}/url`).then((r) => r.data),
     enabled: !!documentId,
   });
-  useEffect(() => { if (urlData?.url) setPdfUrl(urlData.url); }, [urlData]);
+  const pdfUrl = urlData?.url ?? null;
 
   const { data: settings } = useQuery<UserSettings>({
     queryKey: ["settings"],

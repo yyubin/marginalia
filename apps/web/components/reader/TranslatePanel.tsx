@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -17,42 +17,47 @@ export default function TranslatePanel({ text, documentId, onClose }: Props) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    translate();
-  }, [text]);
+    let cancelled = false;
 
-  async function translate() {
-    setResult("");
-    setLoading(true);
-    const token = localStorage.getItem("access_token");
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/translate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ text, target_lang: "ko" }),
-      });
+    async function translate() {
+      setResult("");
+      setLoading(true);
+      const token = localStorage.getItem("access_token");
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/translate`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ text, target_lang: "ko" }),
+        });
 
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") break;
-            setResult((prev) => prev + data);
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          const lines = chunk.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = line.slice(6);
+              if (data === "[DONE]") break;
+              if (!cancelled) setResult((prev) => prev + data);
+            }
           }
         }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } finally {
-      setLoading(false);
     }
-  }
+
+    translate();
+    return () => {
+      cancelled = true;
+    };
+  }, [text]);
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -76,7 +81,7 @@ export default function TranslatePanel({ text, documentId, onClose }: Props) {
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         <div className="text-xs text-gray-400 bg-gray-50 rounded p-2 leading-relaxed">
-          원문: "{text}"
+          원문: &quot;{text}&quot;
         </div>
 
         <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap min-h-[60px]">
