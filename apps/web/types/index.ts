@@ -58,3 +58,11 @@ export interface Collection {
   items: CollectionItem[];
   created_at: string;
 }
+
+export interface Bookmark {
+  id: string;
+  document_id: string;
+  page: number;
+  label: string | null;
+  created_at: string;
+}

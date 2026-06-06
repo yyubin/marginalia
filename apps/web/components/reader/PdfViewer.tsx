@@ -40,6 +40,7 @@ interface Props {
   highlights: AppHighlight[];
   highlightsReady: boolean;
   scrollTarget: { highlight: AppHighlight; nonce: number } | null;
+  pageTarget: { page: number; nonce: number } | null;
   onHighlightCreate: (highlight: NewHighlight, color: HighlightColor, addToScheme?: boolean) => void;
   onHighlightUpdate: (id: string, color: HighlightColor) => void;
   onHighlightDelete: (id: string) => void;
@@ -57,6 +58,7 @@ export default function PdfViewer({
   highlights,
   highlightsReady,
   scrollTarget,
+  pageTarget,
   onHighlightCreate,
   onHighlightUpdate,
   onHighlightDelete,
@@ -197,6 +199,11 @@ export default function PdfViewer({
       if (timeoutId) window.clearTimeout(timeoutId);
     };
   }, [canScrollToPage, highlightsReady, navigateViewerToPage, scrollTarget]);
+
+  useEffect(() => {
+    if (!pageTarget) return;
+    goToPage(pageTarget.page);
+  }, [pageTarget, goToPage]);
 
   useEffect(() => {
     return () => {

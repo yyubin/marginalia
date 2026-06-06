@@ -9,9 +9,11 @@ import type { NewHighlight } from "react-pdf-highlighter";
 import { api } from "@/lib/api";
 import { useHighlightStore } from "@/store/highlightStore";
 import { useSchemeStore } from "@/store/schemeStore";
+import { useBookmarkStore } from "@/store/bookmarkStore";
 import SchemePanel from "@/components/reader/SchemePanel";
 import NotesPanel from "@/components/reader/NotesPanel";
 import TranslatePanel from "@/components/reader/TranslatePanel";
+import BookmarkPanel from "@/components/reader/BookmarkPanel";
 import type { Highlight as StoredHighlight, HighlightColor, UserSettings } from "@/types";
 import type { AppHighlight } from "@/components/reader/PdfViewer";
 
@@ -23,9 +25,13 @@ export default function ReaderPage() {
   const queryClient = useQueryClient();
   const { highlights, setHighlights, addHighlight, selectHighlight, updateHighlight, removeHighlight } = useHighlightStore();
   const { setItems } = useSchemeStore();
+  const { setBookmarks } = useBookmarkStore();
   const [translateText, setTranslateText] = useState<string | null>(null);
   const [loadedHighlightsDocumentId, setLoadedHighlightsDocumentId] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<{ highlight: AppHighlight; nonce: number } | null>(null);
+  const [pageTarget, setPageTarget] = useState<{ page: number; nonce: number } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [bottomTab, setBottomTab] = useState<"notes" | "bookmarks">("notes");
 
   // 하이라이트 점진적 로드를 위한 상태
   const loadedUntilPageRef = useRef(0); // 마지막으로 로드한 PDF 페이지 번호
@@ -93,8 +99,17 @@ export default function ReaderPage() {
   });
   useEffect(() => { if (collectionData?.items) setItems(collectionData.items); }, [collectionData, setItems]);
 
+  // 북마크 초기 로드
+  useEffect(() => {
+    if (!documentId) return;
+    api.get(`/documents/${documentId}/bookmarks`)
+      .then((r) => setBookmarks(r.data))
+      .catch(() => setBookmarks([]));
+  }, [documentId, setBookmarks]);
+
   // PDF 현재 페이지가 바뀌면 추가 하이라이트를 로드
   const handlePageChange = useCallback(async (currentPage: number) => {
+    setCurrentPage(currentPage);
     if (!settings) return;
     if (isLoadingMoreRef.current) return;
     if (currentPage <= loadedUntilPageRef.current) return; // 이미 로드된 범위
@@ -151,6 +166,10 @@ export default function ReaderPage() {
     }
   }
 
+  function handleBookmarkNavigate(page: number) {
+    setPageTarget({ page, nonce: Date.now() });
+  }
+
   function handleHighlightNavigate(highlight: AppHighlight | StoredHighlight) {
     const appHighlight = {
       ...highlight,
@@ -179,6 +198,7 @@ export default function ReaderPage() {
             highlights={highlights as AppHighlight[]}
             highlightsReady={loadedHighlightsDocumentId === documentId}
             scrollTarget={scrollTarget}
+            pageTarget={pageTarget}
             onHighlightCreate={handleHighlightCreate}
             onHighlightUpdate={handleHighlightUpdate}
             onHighlightDelete={handleHighlightDelete}
@@ -201,7 +221,39 @@ export default function ReaderPage() {
               documentId={documentId}
             />
           ) : (
-            <NotesPanel documentId={documentId} onHighlightClick={handleHighlightNavigate} />
+            <div className="flex flex-col flex-1 overflow-hidden">
+              <div className="flex border-b shrink-0">
+                <button
+                  onClick={() => setBottomTab("notes")}
+                  className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                    bottomTab === "notes"
+                      ? "text-black border-b-2 border-black"
+                      : "text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  메모
+                </button>
+                <button
+                  onClick={() => setBottomTab("bookmarks")}
+                  className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                    bottomTab === "bookmarks"
+                      ? "text-black border-b-2 border-black"
+                      : "text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  북마크
+                </button>
+              </div>
+              {bottomTab === "notes" ? (
+                <NotesPanel documentId={documentId} onHighlightClick={handleHighlightNavigate} />
+              ) : (
+                <BookmarkPanel
+                  documentId={documentId}
+                  currentPage={currentPage}
+                  onNavigate={handleBookmarkNavigate}
+                />
+              )}
+            </div>
           )}
         </div>
       </div>
