@@ -167,7 +167,7 @@ async def google_oauth_callback(
     refresh_token = create_refresh_token(str(user.id))
 
     redirect = RedirectResponse(
-        f"{frontend}/auth/callback?access_token={access_token}&refresh_token={refresh_token}"
+        f"{frontend}/callback?access_token={access_token}&refresh_token={refresh_token}"
     )
     redirect.delete_cookie("oauth_state")
     return redirect
