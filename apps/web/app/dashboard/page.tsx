@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Document, User, UserSettings } from "@/types";
 import { Button } from "@/components/ui/button";
+import { Footer } from "@/components/ui/footer";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -142,6 +143,8 @@ export default function DashboardPage() {
           ))}
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 }

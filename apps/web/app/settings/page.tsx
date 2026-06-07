@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Footer } from "@/components/ui/footer";
 import type { UserSettings } from "@/types";
 
 const LLM_PROVIDER_LABELS: Record<string, string> = {
@@ -131,6 +132,8 @@ function SettingsForm({
 
         <LLMKeysSection settings={settings} isLoading={isLoading} />
       </div>
+
+      <Footer />
     </div>
   );
 }

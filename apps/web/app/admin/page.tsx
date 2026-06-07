@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Footer } from "@/components/ui/footer";
 import type {
   User,
   AdminStats,
@@ -125,6 +126,8 @@ function AdminDashboard({ onBack }: { onBack: () => void }) {
       {selectedUserId && (
         <UserDetailPanel userId={selectedUserId} onClose={() => setSelectedUserId(null)} />
       )}
+
+      <Footer />
     </div>
   );
 }
