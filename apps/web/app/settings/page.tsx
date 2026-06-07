@@ -7,6 +7,13 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import type { UserSettings } from "@/types";
 
+const LLM_PROVIDER_LABELS: Record<string, string> = {
+  anthropic: "Anthropic (Claude)",
+  openai: "OpenAI (ChatGPT)",
+  google: "Google (Gemini)",
+};
+const LLM_PROVIDERS = Object.keys(LLM_PROVIDER_LABELS);
+
 export default function SettingsPage() {
   const router = useRouter();
 
@@ -25,8 +32,7 @@ export default function SettingsPage() {
     <SettingsForm
       key={initialPerPage}
       initialPerPage={initialPerPage}
-      maxDocuments={settings?.max_documents}
-      maxFileSizeMb={settings?.max_file_size_mb}
+      settings={settings}
       isLoading={isLoading}
       onBack={() => router.push("/dashboard")}
     />
@@ -35,14 +41,12 @@ export default function SettingsPage() {
 
 function SettingsForm({
   initialPerPage,
-  maxDocuments,
-  maxFileSizeMb,
+  settings,
   isLoading,
   onBack,
 }: {
   initialPerPage: number;
-  maxDocuments?: number;
-  maxFileSizeMb?: number;
+  settings?: UserSettings;
   isLoading: boolean;
   onBack: () => void;
 }) {
@@ -117,14 +121,137 @@ function SettingsForm({
           <h2 className="text-sm font-semibold">업로드 한도</h2>
           <div className="flex items-center justify-between text-sm text-gray-700">
             <span>저장 가능한 PDF 개수</span>
-            <span className="font-medium">{maxDocuments ?? "-"}개</span>
+            <span className="font-medium">{settings?.max_documents ?? "-"}개</span>
           </div>
           <div className="flex items-center justify-between text-sm text-gray-700">
             <span>파일 당 최대 용량</span>
-            <span className="font-medium">{maxFileSizeMb ?? "-"}MB</span>
+            <span className="font-medium">{settings?.max_file_size_mb ?? "-"}MB</span>
           </div>
         </section>
+
+        <LLMKeysSection settings={settings} isLoading={isLoading} />
       </div>
     </div>
+  );
+}
+
+function LLMKeysSection({ settings, isLoading }: { settings?: UserSettings; isLoading: boolean }) {
+  const queryClient = useQueryClient();
+  const [draftKeys, setDraftKeys] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["settings"] });
+
+  const registerMutation = useMutation({
+    mutationFn: ({ provider, apiKey }: { provider: string; apiKey: string }) =>
+      api.put(`/settings/llm-keys/${provider}`, { api_key: apiKey }),
+    onSuccess: (_data, { provider }) => {
+      setDraftKeys((prev) => ({ ...prev, [provider]: "" }));
+      setError(null);
+      invalidate();
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        "키 등록에 실패했습니다";
+      setError(message);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (provider: string) => api.delete(`/settings/llm-keys/${provider}`),
+    onSuccess: () => {
+      setError(null);
+      invalidate();
+    },
+  });
+
+  const defaultProviderMutation = useMutation({
+    mutationFn: (provider: string | null) => api.put("/settings/llm-provider", { provider }),
+    onSuccess: () => invalidate(),
+  });
+
+  const llmKeys = settings?.llm_keys ?? [];
+  const keyByProvider = Object.fromEntries(llmKeys.map((k) => [k.provider, k]));
+
+  return (
+    <section className="bg-white rounded-xl border p-6 space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold">번역 LLM API 키</h2>
+        <p className="text-xs text-gray-400 mt-1">
+          직접 발급받은 API 키를 등록하면 번역 시 해당 키로 호출합니다. 키를 등록하지 않으면{" "}
+          {settings?.llm_fallback_allowed
+            ? "서버 공용 키로 번역이 동작합니다."
+            : "관리자 설정에 따라 번역 기능을 사용할 수 없습니다."}
+        </p>
+      </div>
+
+      {error && <p className="text-xs text-red-500">{error}</p>}
+
+      <div className="space-y-3">
+        {LLM_PROVIDERS.map((provider) => {
+          const registered = keyByProvider[provider];
+          return (
+            <div key={provider} className="border rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">{LLM_PROVIDER_LABELS[provider]}</span>
+                {registered ? (
+                  <span className="text-xs text-gray-400 font-mono">{registered.key_preview}</span>
+                ) : (
+                  <span className="text-xs text-gray-300">미등록</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="password"
+                  placeholder="API 키 입력"
+                  value={draftKeys[provider] ?? ""}
+                  onChange={(e) => setDraftKeys((prev) => ({ ...prev, [provider]: e.target.value }))}
+                  className="flex-1 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                  disabled={isLoading}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!draftKeys[provider] || registerMutation.isPending}
+                  onClick={() =>
+                    registerMutation.mutate({ provider, apiKey: draftKeys[provider] })
+                  }
+                >
+                  {registered ? "교체" : "등록"}
+                </Button>
+                {registered && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate(provider)}
+                  >
+                    삭제
+                  </Button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="space-y-2 pt-2 border-t">
+        <label className="text-sm text-gray-700">번역 시 사용할 기본 provider</label>
+        <select
+          value={settings?.default_llm_provider ?? ""}
+          onChange={(e) => defaultProviderMutation.mutate(e.target.value || null)}
+          disabled={isLoading || defaultProviderMutation.isPending}
+          className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+        >
+          <option value="">선택 안 함 (기본값: Anthropic)</option>
+          {LLM_PROVIDERS.map((provider) => (
+            <option key={provider} value={provider}>
+              {LLM_PROVIDER_LABELS[provider]}
+            </option>
+          ))}
+        </select>
+      </div>
+    </section>
   );
 }

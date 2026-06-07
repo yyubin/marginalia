@@ -56,10 +56,21 @@ export interface CollectionItem {
   highlight: Highlight;
 }
 
+export type LLMProvider = "anthropic" | "openai" | "google";
+
+export interface LLMKeyInfo {
+  provider: string;
+  key_preview: string;
+  updated_at: string;
+}
+
 export interface UserSettings {
   highlights_per_page: number;
   max_documents: number;
   max_file_size_mb: number;
+  default_llm_provider: string | null;
+  llm_fallback_allowed: boolean;
+  llm_keys: LLMKeyInfo[];
 }
 
 export interface Collection {
@@ -116,6 +127,8 @@ export interface AdminUserDetail {
   total_storage_bytes: number;
   max_documents: number;
   max_file_size_mb: number;
+  llm_fallback_allowed: boolean;
+  llm_providers_configured: string[];
 }
 
 export interface AdminStats {

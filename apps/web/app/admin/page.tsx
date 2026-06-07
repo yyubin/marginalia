@@ -236,6 +236,12 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
     onSuccess: invalidate,
   });
 
+  const llmFallbackMutation = useMutation({
+    mutationFn: (llm_fallback_allowed: boolean | null) =>
+      api.patch(`/admin/users/${userId}/llm-fallback`, { llm_fallback_allowed }),
+    onSuccess: invalidate,
+  });
+
   const suspendMutation = useMutation({
     mutationFn: (suspend: boolean) =>
       api.post(`/admin/users/${userId}/${suspend ? "suspend" : "unsuspend"}`),
@@ -333,6 +339,45 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
               <Button size="sm" onClick={handleSaveLimits} disabled={limitsMutation.isPending}>
                 저장
               </Button>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t">
+              <h3 className="text-xs font-semibold text-gray-500">번역 LLM</h3>
+              <p className="text-xs text-gray-600">
+                등록된 키:{" "}
+                {detail.llm_providers_configured.length > 0
+                  ? detail.llm_providers_configured.join(", ")
+                  : "없음"}
+              </p>
+              <p className="text-xs text-gray-600">
+                서버 공용 키 폴백: <span className="font-medium">{detail.llm_fallback_allowed ? "허용" : "허용 안 함"}</span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={llmFallbackMutation.isPending}
+                  onClick={() => llmFallbackMutation.mutate(true)}
+                >
+                  허용으로 설정
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={llmFallbackMutation.isPending}
+                  onClick={() => llmFallbackMutation.mutate(false)}
+                >
+                  허용 안 함으로 설정
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={llmFallbackMutation.isPending}
+                  onClick={() => llmFallbackMutation.mutate(null)}
+                >
+                  전역 기본값으로 재설정
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-2 pt-2 border-t">
