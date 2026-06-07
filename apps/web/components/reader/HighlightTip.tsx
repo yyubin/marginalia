@@ -14,9 +14,10 @@ interface Props {
   onColorSelect: (color: HighlightColor) => void;
   onAddToScheme: () => void;
   onTranslate: () => void;
+  canTranslate?: boolean;
 }
 
-export default function HighlightTip({ onColorSelect, onAddToScheme, onTranslate }: Props) {
+export default function HighlightTip({ onColorSelect, onAddToScheme, onTranslate, canTranslate = true }: Props) {
   return (
     <div className="flex flex-col gap-1 bg-white border shadow-lg rounded-xl p-2 min-w-[160px]">
       <div className="flex gap-1.5 justify-center px-1 py-0.5">
@@ -41,9 +42,11 @@ export default function HighlightTip({ onColorSelect, onAddToScheme, onTranslate
       </button>
       <button
         onClick={onTranslate}
-        className="text-xs text-left px-2 py-1 rounded hover:bg-gray-100 text-gray-700"
+        disabled={!canTranslate}
+        className="text-xs text-left px-2 py-1 rounded hover:bg-gray-100 text-gray-700 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+        title={canTranslate ? "선택한 텍스트 번역" : "텍스트 선택 영역만 번역할 수 있습니다"}
       >
-        번역
+        선택 영역 번역
       </button>
     </div>
   );

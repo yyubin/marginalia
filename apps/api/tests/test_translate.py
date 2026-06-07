@@ -75,6 +75,23 @@ class TestTranslate:
         assert response.status_code == 200
         assert fake.calls[0]["api_key"] == "user-secret-key"
 
+    async def test_uses_registered_non_anthropic_key_when_no_default_provider(self, client, db, user, auth_headers):
+        db.add(
+            UserLLMKey(
+                user_id=user.id,
+                provider="openai",
+                encrypted_key=encrypt_secret("openai-secret-key"),
+                key_preview="open...key",
+            )
+        )
+        await db.flush()
+
+        ctx, fake = _patch_provider()
+        with ctx:
+            response = await client.post("/api/v1/translate", json={"text": "hello"}, headers=auth_headers)
+        assert response.status_code == 200
+        assert fake.calls[0]["api_key"] == "openai-secret-key"
+
     async def test_uses_key_for_users_chosen_default_provider(self, client, db, user, auth_headers):
         db.add(UserSettings(user_id=user.id, default_llm_provider="openai"))
         db.add(

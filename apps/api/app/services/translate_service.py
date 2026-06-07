@@ -6,7 +6,7 @@ from app.core.crypto import decrypt_secret
 from app.models.user import User
 from app.models.user_llm_key import UserLLMKey
 from app.models.user_settings import UserSettings
-from app.services.llm_providers import LLMProvider, get_provider
+from app.services.llm_providers import LLMProvider, SUPPORTED_PROVIDERS, get_provider
 
 SERVER_FALLBACK_PROVIDER = "anthropic"
 
@@ -24,18 +24,24 @@ async def resolve_translation_credentials(
     """
     user_settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
 
-    selected_provider = provider_name or SERVER_FALLBACK_PROVIDER
-    if provider_name is None and user_settings and user_settings.default_llm_provider:
+    selected_provider = provider_name
+    if selected_provider is None and user_settings and user_settings.default_llm_provider:
         selected_provider = user_settings.default_llm_provider
 
-    user_key = await db.scalar(
-        select(UserLLMKey).where(UserLLMKey.user_id == user.id, UserLLMKey.provider == selected_provider)
-    )
-    if user_key:
-        return get_provider(selected_provider), decrypt_secret(user_key.encrypted_key), "user"
-
-    if provider_name is not None:
+    if selected_provider is not None:
+        user_key = await db.scalar(
+            select(UserLLMKey).where(UserLLMKey.user_id == user.id, UserLLMKey.provider == selected_provider)
+        )
+        if user_key:
+            return get_provider(selected_provider), decrypt_secret(user_key.encrypted_key), "user"
         return None
+
+    user_keys_result = await db.execute(select(UserLLMKey).where(UserLLMKey.user_id == user.id))
+    user_keys = {key.provider: key for key in user_keys_result.scalars().all()}
+    for available_provider in SUPPORTED_PROVIDERS:
+        user_key = user_keys.get(available_provider)
+        if user_key:
+            return get_provider(available_provider), decrypt_secret(user_key.encrypted_key), "user"
 
     fallback_allowed = (
         user_settings.effective_llm_fallback_allowed

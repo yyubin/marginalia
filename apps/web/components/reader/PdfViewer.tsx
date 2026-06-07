@@ -430,22 +430,27 @@ export default function PdfViewer({
                   });
                 }
               }}
-              onSelectionFinished={(position, content, hideTipAndSelection) => (
-                <HighlightTip
-                  onColorSelect={(color) => {
-                    onHighlightCreate({ position, content, comment: { text: "", emoji: "" } }, color);
-                    hideTipAndSelection();
-                  }}
-                  onAddToScheme={() => {
-                    onHighlightCreate({ position, content, comment: { text: "", emoji: "" } }, "yellow", true);
-                    hideTipAndSelection();
-                  }}
-                  onTranslate={() => {
-                    if (content.text) onTranslate(content.text);
-                    hideTipAndSelection();
-                  }}
-                />
-              )}
+              onSelectionFinished={(position, content, hideTipAndSelection) => {
+                const selectedText = content.text?.trim() ?? "";
+
+                return (
+                  <HighlightTip
+                    canTranslate={selectedText.length > 0}
+                    onColorSelect={(color) => {
+                      onHighlightCreate({ position, content, comment: { text: "", emoji: "" } }, color);
+                      hideTipAndSelection();
+                    }}
+                    onAddToScheme={() => {
+                      onHighlightCreate({ position, content, comment: { text: "", emoji: "" } }, "yellow", true);
+                      hideTipAndSelection();
+                    }}
+                    onTranslate={() => {
+                      if (selectedText) onTranslate(selectedText);
+                      hideTipAndSelection();
+                    }}
+                  />
+                );
+              }}
               highlightTransform={(highlight, _index, setTip, hideTip, _vts, _ss, isScrolledTo) => {
               const appHighlight = getHighlightById(highlight.id) ?? {
                 ...highlight,
