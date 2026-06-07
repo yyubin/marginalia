@@ -20,11 +20,17 @@ class OpenAIProvider(LLMProvider):
         except openai.AuthenticationError:
             return False
 
-    async def stream_translate(self, api_key: str, text: str, target_lang: str) -> AsyncGenerator[str, None]:
+    async def stream_translate(
+        self,
+        api_key: str,
+        text: str,
+        target_lang: str,
+        source_lang: str = "auto",
+    ) -> AsyncGenerator[str, None]:
         client = AsyncOpenAI(api_key=api_key)
         stream = await client.chat.completions.create(
             model=self.model,
-            messages=[{"role": "user", "content": build_translation_prompt(text, target_lang)}],
+            messages=[{"role": "user", "content": build_translation_prompt(text, target_lang, source_lang)}],
             stream=True,
         )
         async for chunk in stream:

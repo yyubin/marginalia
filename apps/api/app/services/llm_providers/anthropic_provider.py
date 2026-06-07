@@ -19,12 +19,18 @@ class AnthropicProvider(LLMProvider):
         except anthropic.AuthenticationError:
             return False
 
-    async def stream_translate(self, api_key: str, text: str, target_lang: str) -> AsyncGenerator[str, None]:
+    async def stream_translate(
+        self,
+        api_key: str,
+        text: str,
+        target_lang: str,
+        source_lang: str = "auto",
+    ) -> AsyncGenerator[str, None]:
         client = anthropic.AsyncAnthropic(api_key=api_key)
         async with client.messages.stream(
             model=self.model,
             max_tokens=2048,
-            messages=[{"role": "user", "content": build_translation_prompt(text, target_lang)}],
+            messages=[{"role": "user", "content": build_translation_prompt(text, target_lang, source_lang)}],
         ) as stream:
             async for chunk in stream.text_stream:
                 yield chunk

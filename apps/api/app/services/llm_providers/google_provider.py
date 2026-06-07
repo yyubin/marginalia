@@ -22,11 +22,17 @@ class GoogleProvider(LLMProvider):
                 return False
             raise
 
-    async def stream_translate(self, api_key: str, text: str, target_lang: str) -> AsyncGenerator[str, None]:
+    async def stream_translate(
+        self,
+        api_key: str,
+        text: str,
+        target_lang: str,
+        source_lang: str = "auto",
+    ) -> AsyncGenerator[str, None]:
         client = genai.Client(api_key=api_key)
         stream = await client.aio.models.generate_content_stream(
             model=self.model,
-            contents=build_translation_prompt(text, target_lang),
+            contents=build_translation_prompt(text, target_lang, source_lang),
         )
         async for chunk in stream:
             if chunk.text:

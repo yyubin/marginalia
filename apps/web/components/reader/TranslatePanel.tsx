@@ -5,6 +5,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
+type TranslateStatus = "idle" | "streaming" | "done" | "error";
+
 interface Props {
   text: string;
   documentId: string;
@@ -13,15 +15,18 @@ interface Props {
 
 export default function TranslatePanel({ text, documentId, onClose }: Props) {
   const [result, setResult] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<TranslateStatus>("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     async function translate() {
       setResult("");
-      setLoading(true);
+      setErrorMessage(null);
+      setStatus("streaming");
       const token = localStorage.getItem("access_token");
       try {
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/translate`, {
@@ -31,33 +36,48 @@ export default function TranslatePanel({ text, documentId, onClose }: Props) {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({ text, target_lang: "ko" }),
+          signal: controller.signal,
         });
 
-        const reader = res.body!.getReader();
+        if (!res.ok) {
+          const message = await readErrorMessage(res);
+          throw new Error(message);
+        }
+        if (!res.body) throw new Error("번역 응답을 읽을 수 없습니다");
+
+        const reader = res.body.getReader();
         const decoder = new TextDecoder();
+        let buffer = "";
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value);
-          const lines = chunk.split("\n");
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") break;
-              if (!cancelled) setResult((prev) => prev + data);
-            }
-          }
+          buffer += decoder.decode(value, { stream: true });
+          buffer = consumeSseBuffer(buffer, {
+            onDelta: (chunk) => setResult((prev) => prev + chunk),
+            onDone: () => setStatus("done"),
+            onError: (message) => {
+              setErrorMessage(message);
+              setStatus("error");
+            },
+          });
         }
-      } finally {
-        if (!cancelled) setLoading(false);
+
+        if (!controller.signal.aborted) {
+          setStatus((current) => (current === "streaming" ? "done" : current));
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setErrorMessage(error instanceof Error ? error.message : "번역 중 오류가 발생했습니다");
+        setStatus("error");
       }
     }
 
     translate();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [text]);
+  }, [text, retryNonce]);
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -85,18 +105,76 @@ export default function TranslatePanel({ text, documentId, onClose }: Props) {
         </div>
 
         <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap min-h-[60px]">
-          {loading && !result && <span className="text-gray-300 animate-pulse">번역 중...</span>}
+          {status === "streaming" && !result && (
+            <span className="text-gray-300 animate-pulse">번역 중...</span>
+          )}
           {result}
         </div>
+
+        {errorMessage && (
+          <div className="rounded border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-500">
+            {errorMessage}
+          </div>
+        )}
       </div>
 
-      {result && (
-        <div className="p-3 border-t">
-          <Button size="sm" className="w-full" onClick={() => saveMutation.mutate()}>
+      {(result || status === "error") && (
+        <div className="p-3 border-t flex gap-2">
+          {result && (
+          <Button size="sm" className="flex-1" onClick={() => saveMutation.mutate()}>
             메모로 저장
           </Button>
+          )}
+          {status === "error" && (
+            <Button size="sm" variant="outline" className="flex-1" onClick={() => setRetryNonce((n) => n + 1)}>
+              다시 번역
+            </Button>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+async function readErrorMessage(response: Response) {
+  try {
+    const body = await response.json();
+    return body.detail ?? "번역 요청에 실패했습니다";
+  } catch {
+    return "번역 요청에 실패했습니다";
+  }
+}
+
+function consumeSseBuffer(
+  buffer: string,
+  handlers: {
+    onDelta: (text: string) => void;
+    onDone: () => void;
+    onError: (message: string) => void;
+  }
+) {
+  const events = buffer.split(/\n\n/);
+  const rest = events.pop() ?? "";
+
+  for (const rawEvent of events) {
+    const lines = rawEvent.split("\n");
+    const eventType = lines.find((line) => line.startsWith("event: "))?.slice(7) ?? "message";
+    const dataLine = lines.find((line) => line.startsWith("data: "));
+    if (!dataLine) continue;
+
+    try {
+      const data = JSON.parse(dataLine.slice(6));
+      if (eventType === "delta") {
+        handlers.onDelta(data.text ?? "");
+      } else if (eventType === "done") {
+        handlers.onDone();
+      } else if (eventType === "error") {
+        handlers.onError(data.message ?? "번역 중 오류가 발생했습니다");
+      }
+    } catch {
+      handlers.onError("번역 응답을 처리할 수 없습니다");
+    }
+  }
+
+  return rest;
 }

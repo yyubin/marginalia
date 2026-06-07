@@ -11,24 +11,31 @@ from app.services.llm_providers import LLMProvider, get_provider
 SERVER_FALLBACK_PROVIDER = "anthropic"
 
 
-async def resolve_translation_credentials(db: AsyncSession, user: User) -> tuple[LLMProvider, str] | None:
+async def resolve_translation_credentials(
+    db: AsyncSession,
+    user: User,
+    provider_name: str | None = None,
+) -> tuple[LLMProvider, str, str] | None:
     """Resolves which LLM provider + API key a translation request should use.
 
-    Returns (provider, api_key). Returns None if the user has no key registered
+    Returns (provider, api_key, key_source). Returns None if the user has no key registered
     for their chosen provider and is not allowed to fall back to the server's
     shared key (in which case the caller should reject the request).
     """
     user_settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
 
-    provider_name = SERVER_FALLBACK_PROVIDER
-    if user_settings and user_settings.default_llm_provider:
-        provider_name = user_settings.default_llm_provider
+    selected_provider = provider_name or SERVER_FALLBACK_PROVIDER
+    if provider_name is None and user_settings and user_settings.default_llm_provider:
+        selected_provider = user_settings.default_llm_provider
 
     user_key = await db.scalar(
-        select(UserLLMKey).where(UserLLMKey.user_id == user.id, UserLLMKey.provider == provider_name)
+        select(UserLLMKey).where(UserLLMKey.user_id == user.id, UserLLMKey.provider == selected_provider)
     )
     if user_key:
-        return get_provider(provider_name), decrypt_secret(user_key.encrypted_key)
+        return get_provider(selected_provider), decrypt_secret(user_key.encrypted_key), "user"
+
+    if provider_name is not None:
+        return None
 
     fallback_allowed = (
         user_settings.effective_llm_fallback_allowed
@@ -38,4 +45,4 @@ async def resolve_translation_credentials(db: AsyncSession, user: User) -> tuple
     if not fallback_allowed:
         return None
 
-    return get_provider(SERVER_FALLBACK_PROVIDER), settings.ANTHROPIC_API_KEY
+    return get_provider(SERVER_FALLBACK_PROVIDER), settings.ANTHROPIC_API_KEY, "server"

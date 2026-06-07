@@ -13,8 +13,13 @@ class _FakeProvider:
         self.chunks = chunks
         self.calls = []
 
-    async def stream_translate(self, api_key, text, target_lang):
-        self.calls.append({"api_key": api_key, "text": text, "target_lang": target_lang})
+    async def stream_translate(self, api_key, text, target_lang, source_lang="auto"):
+        self.calls.append({
+            "api_key": api_key,
+            "text": text,
+            "target_lang": target_lang,
+            "source_lang": source_lang,
+        })
         for chunk in self.chunks:
             yield chunk
 
@@ -43,11 +48,15 @@ class TestTranslate:
             )
         assert response.status_code == 200
         body = response.text
-        assert "data: 안" in body
-        assert "data: 녕" in body
-        assert body.strip().endswith("data: [DONE]")
+        assert "event: meta" in body
+        assert 'data: {"provider":' in body
+        assert "event: delta" in body
+        assert 'data: {"text": "안"}' in body
+        assert 'data: {"text": "녕"}' in body
+        assert body.strip().endswith("data: {}")
         assert fake.calls[0]["text"] == "hello"
         assert fake.calls[0]["target_lang"] == "ko"
+        assert fake.calls[0]["source_lang"] == "auto"
 
     async def test_uses_registered_user_key_for_default_provider(self, client, db, user, auth_headers):
         db.add(
