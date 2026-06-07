@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.document import Document
 from app.models.user import User
+from app.models.user_settings import UserSettings
 from app.schemas.document import DocumentResponse, DocumentUrlResponse
 from app.services.r2_service import delete_file, generate_presigned_url, upload_file
 
@@ -36,19 +37,23 @@ async def upload_document(
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF 파일만 업로드할 수 있습니다")
 
+    user_settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == current_user.id))
+    max_documents = user_settings.effective_max_documents if user_settings else settings.MAX_DOCUMENTS_PER_USER
+    max_file_size_mb = user_settings.effective_max_file_size_mb if user_settings else settings.MAX_FILE_SIZE_MB
+
     count = await db.scalar(select(func.count()).select_from(Document).where(Document.user_id == current_user.id))
-    if count >= settings.MAX_DOCUMENTS_PER_USER:
+    if count >= max_documents:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"최대 {settings.MAX_DOCUMENTS_PER_USER}개의 PDF만 저장할 수 있습니다",
+            detail=f"최대 {max_documents}개의 PDF만 저장할 수 있습니다",
         )
 
-    max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+    max_bytes = max_file_size_mb * 1024 * 1024
     file_bytes = await file.read()
     if len(file_bytes) > max_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"파일 크기는 {settings.MAX_FILE_SIZE_MB}MB 이하여야 합니다",
+            detail=f"파일 크기는 {max_file_size_mb}MB 이하여야 합니다",
         )
 
     file_key = f"{current_user.id}/{uuid.uuid4()}.pdf"
