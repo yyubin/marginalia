@@ -4,11 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
+import axios from "axios";
 import type { NewHighlight } from "react-pdf-highlighter";
 
 import { api } from "@/lib/api";
 import { useHighlightStore } from "@/store/highlightStore";
-import { useSchemeStore } from "@/store/schemeStore";
 import { useBookmarkStore } from "@/store/bookmarkStore";
 import SchemePanel from "@/components/reader/SchemePanel";
 import NotesPanel from "@/components/reader/NotesPanel";
@@ -24,7 +24,6 @@ export default function ReaderPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { highlights, setHighlights, addHighlight, selectHighlight, updateHighlight, removeHighlight } = useHighlightStore();
-  const { setItems } = useSchemeStore();
   const { setBookmarks } = useBookmarkStore();
   const [translateText, setTranslateText] = useState<string | null>(null);
   const [loadedHighlightsDocumentId, setLoadedHighlightsDocumentId] = useState<string | null>(null);
@@ -92,13 +91,6 @@ export default function ReaderPage() {
     };
   }, [documentId, highlightPageLimit, setHighlights]);
 
-  const { data: collectionData } = useQuery({
-    queryKey: ["collection", documentId],
-    queryFn: () => api.get(`/documents/${documentId}/collection`).then((r) => r.data),
-    enabled: !!documentId,
-  });
-  useEffect(() => { if (collectionData?.items) setItems(collectionData.items); }, [collectionData, setItems]);
-
   // 북마크 초기 로드
   useEffect(() => {
     if (!documentId) return;
@@ -149,6 +141,18 @@ export default function ReaderPage() {
     removeHighlight(id);
     await api.delete(`/highlights/${id}`);
     queryClient.invalidateQueries({ queryKey: ["collection", documentId] });
+  }
+
+  async function handleHighlightAddToScheme(id: string) {
+    try {
+      await api.post(`/documents/${documentId}/collection/items`, { highlight_id: id });
+    } catch (error) {
+      if (!axios.isAxiosError(error) || error.response?.status !== 409) {
+        throw error;
+      }
+    } finally {
+      queryClient.invalidateQueries({ queryKey: ["collection", documentId] });
+    }
   }
 
   async function handleHighlightCreate(highlight: NewHighlight, color: HighlightColor, addToScheme = false) {
@@ -202,6 +206,7 @@ export default function ReaderPage() {
             onHighlightCreate={handleHighlightCreate}
             onHighlightUpdate={handleHighlightUpdate}
             onHighlightDelete={handleHighlightDelete}
+            onHighlightAddToScheme={handleHighlightAddToScheme}
             onTranslate={(text) => setTranslateText(text)}
             onHighlightClick={(h) => selectHighlight(h)}
             onPageChange={handlePageChange}

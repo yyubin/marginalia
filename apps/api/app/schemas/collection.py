@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.highlight import HighlightResponse
 
@@ -10,8 +10,13 @@ class CollectionItemAdd(BaseModel):
     highlight_id: UUID
 
 
+class CollectionItemPosition(BaseModel):
+    id: UUID
+    position: int = Field(ge=1)
+
+
 class CollectionItemReorder(BaseModel):
-    items: list[dict]  # [{ id: UUID, position: int }]
+    items: list[CollectionItemPosition]
 
 
 class CollectionItemResponse(BaseModel):

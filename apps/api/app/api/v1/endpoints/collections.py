@@ -1,7 +1,8 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import Query
+from sqlalchemy import Integer, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -9,6 +10,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.collection import Collection, CollectionItem
 from app.models.document import Document
+from app.models.highlight import Highlight
 from app.models.user import User
 from app.schemas.collection import CollectionItemAdd, CollectionItemReorder, CollectionResponse
 
@@ -18,11 +20,16 @@ router = APIRouter(tags=["collections"])
 @router.get("/documents/{doc_id}/collection", response_model=CollectionResponse)
 async def get_collection(
     doc_id: uuid.UUID,
+    page_from: int | None = Query(default=None, ge=1),
+    page_to: int | None = Query(default=None, ge=1),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if page_from is not None and page_to is not None and page_from > page_to:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="page_from must be less than or equal to page_to")
+
     collection = await _get_or_create_collection(db, doc_id, current_user.id)
-    return await _load_collection(db, collection.id)
+    return await _load_collection(db, collection.id, page_from=page_from, page_to=page_to)
 
 
 @router.post("/documents/{doc_id}/collection/items", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
@@ -69,17 +76,23 @@ async def reorder_collection_items(
     current_user: User = Depends(get_current_user),
 ):
     collection = await _get_or_create_collection(db, doc_id, current_user.id)
+    item_ids = [item.id for item in body.items]
+    if len(set(item_ids)) != len(item_ids):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Duplicate collection item ids are not allowed")
+
+    result = await db.execute(
+        select(CollectionItem).where(
+            CollectionItem.id.in_(item_ids),
+            CollectionItem.collection_id == collection.id,
+        )
+    )
+    items_by_id = {item.id: item for item in result.scalars().all()}
+
+    if len(items_by_id) != len(item_ids):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection item not found")
 
     for item_data in body.items:
-        result = await db.execute(
-            select(CollectionItem).where(
-                CollectionItem.id == item_data["id"],
-                CollectionItem.collection_id == collection.id,
-            )
-        )
-        item = result.scalar_one_or_none()
-        if item:
-            item.position = item_data["position"]
+        items_by_id[item_data.id].position = item_data.position
 
     await db.commit()
     return await _load_collection(db, collection.id)
@@ -103,15 +116,40 @@ async def remove_collection_item(
     await db.commit()
 
 
-async def _load_collection(db: AsyncSession, collection_id: uuid.UUID) -> Collection:
-    result = await db.execute(
-        select(Collection)
-        .options(selectinload(Collection.items).selectinload(CollectionItem.highlight))
-        .where(Collection.id == collection_id)
-        .order_by(Collection.id)
+async def _load_collection(
+    db: AsyncSession,
+    collection_id: uuid.UUID,
+    page_from: int | None = None,
+    page_to: int | None = None,
+) -> dict:
+    collection_result = await db.execute(
+        select(Collection).where(Collection.id == collection_id)
     )
-    return result.scalar_one()
+    collection = collection_result.scalar_one()
 
+    page_col = cast(Highlight.position["pageNumber"].astext, Integer)
+    item_query = (
+        select(CollectionItem)
+        .options(selectinload(CollectionItem.highlight))
+        .join(Highlight)
+        .where(CollectionItem.collection_id == collection_id)
+        .order_by(CollectionItem.position)
+    )
+    if page_from is not None:
+        item_query = item_query.where(page_col >= page_from)
+    if page_to is not None:
+        item_query = item_query.where(page_col <= page_to)
+
+    items_result = await db.execute(item_query)
+    items = items_result.scalars().all()
+
+    return {
+        "id": collection.id,
+        "document_id": collection.document_id,
+        "name": collection.name,
+        "items": items,
+        "created_at": collection.created_at,
+    }
 
 async def _get_or_create_collection(db: AsyncSession, doc_id: uuid.UUID, user_id: uuid.UUID) -> Collection:
     doc_result = await db.execute(

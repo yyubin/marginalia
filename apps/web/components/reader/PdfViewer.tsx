@@ -46,6 +46,7 @@ interface Props {
   onHighlightCreate: (highlight: NewHighlight, color: HighlightColor, addToScheme?: boolean) => void;
   onHighlightUpdate: (id: string, color: HighlightColor) => void;
   onHighlightDelete: (id: string) => void;
+  onHighlightAddToScheme: (id: string) => void;
   onTranslate: (text: string) => void;
   onHighlightClick: (highlight: AppHighlight) => void;
   onPageChange?: (page: number) => void;
@@ -64,6 +65,7 @@ export default function PdfViewer({
   onHighlightCreate,
   onHighlightUpdate,
   onHighlightDelete,
+  onHighlightAddToScheme,
   onTranslate,
   onHighlightClick,
   onPageChange,
@@ -460,6 +462,10 @@ export default function PdfViewer({
                     currentColor={color}
                     onColorChange={(newColor) => {
                       onHighlightUpdate(highlight.id, newColor);
+                      hideTip();
+                    }}
+                    onAddToScheme={() => {
+                      onHighlightAddToScheme(highlight.id);
                       hideTip();
                     }}
                     onDelete={() => {

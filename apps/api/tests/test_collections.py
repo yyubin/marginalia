@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 
 from app.models.collection import Collection, CollectionItem
@@ -34,6 +36,77 @@ class TestGetCollection:
     async def test_unauthenticated_returns_403(self, client, document):
         response = await client.get(f"/api/v1/documents/{document.id}/collection")
         assert response.status_code in (401, 403)
+
+    async def test_filters_items_by_page_range(self, client, auth_headers, document, db, user):
+        highlights = [
+            Highlight(
+                document_id=document.id, user_id=user.id,
+                position={**POSITION, "pageNumber": 1}, content={"text": "page 1"}, color="yellow",
+            ),
+            Highlight(
+                document_id=document.id, user_id=user.id,
+                position={**POSITION, "pageNumber": 3}, content={"text": "page 3"}, color="green",
+            ),
+            Highlight(
+                document_id=document.id, user_id=user.id,
+                position={**POSITION, "pageNumber": 5}, content={"text": "page 5"}, color="blue",
+            ),
+        ]
+        collection = Collection(document_id=document.id, user_id=user.id)
+        db.add_all([*highlights, collection])
+        await db.flush()
+        db.add_all([
+            CollectionItem(collection_id=collection.id, highlight_id=highlights[0].id, position=1),
+            CollectionItem(collection_id=collection.id, highlight_id=highlights[1].id, position=2),
+            CollectionItem(collection_id=collection.id, highlight_id=highlights[2].id, position=3),
+        ])
+        await db.commit()
+
+        response = await client.get(
+            f"/api/v1/documents/{document.id}/collection",
+            params={"page_from": 2, "page_to": 4},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        items = response.json()["items"]
+        assert [item["highlight"]["content"]["text"] for item in items] == ["page 3"]
+
+    async def test_filters_items_by_lower_page_bound(self, client, auth_headers, document, db, user):
+        h1 = Highlight(
+            document_id=document.id, user_id=user.id,
+            position={**POSITION, "pageNumber": 1}, content={"text": "page 1"}, color="yellow",
+        )
+        h2 = Highlight(
+            document_id=document.id, user_id=user.id,
+            position={**POSITION, "pageNumber": 4}, content={"text": "page 4"}, color="green",
+        )
+        collection = Collection(document_id=document.id, user_id=user.id)
+        db.add_all([h1, h2, collection])
+        await db.flush()
+        db.add_all([
+            CollectionItem(collection_id=collection.id, highlight_id=h1.id, position=1),
+            CollectionItem(collection_id=collection.id, highlight_id=h2.id, position=2),
+        ])
+        await db.commit()
+
+        response = await client.get(
+            f"/api/v1/documents/{document.id}/collection",
+            params={"page_from": 2},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        assert [item["highlight"]["content"]["text"] for item in response.json()["items"]] == ["page 4"]
+
+    async def test_invalid_page_range_returns_422(self, client, auth_headers, document):
+        response = await client.get(
+            f"/api/v1/documents/{document.id}/collection",
+            params={"page_from": 5, "page_to": 2},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
 
 
 class TestAddCollectionItem:
@@ -181,3 +254,21 @@ class TestReorderCollectionItems:
         reordered = {i["id"]: i["position"] for i in reorder_resp.json()["items"]}
         assert reordered[item1_id] == 2
         assert reordered[item2_id] == 1
+
+    async def test_rejects_unknown_item_id(self, client, auth_headers, document):
+        response = await client.patch(
+            f"/api/v1/documents/{document.id}/collection/items",
+            json={"items": [{"id": str(uuid.uuid4()), "position": 1}]},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 404
+
+    async def test_rejects_invalid_position(self, client, auth_headers, document):
+        response = await client.patch(
+            f"/api/v1/documents/{document.id}/collection/items",
+            json={"items": [{"id": str(uuid.uuid4()), "position": 0}]},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422

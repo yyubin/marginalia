@@ -52,10 +52,11 @@ export default function HighlightTip({ onColorSelect, onAddToScheme, onTranslate
 interface EditProps {
   currentColor: HighlightColor;
   onColorChange: (color: HighlightColor) => void;
+  onAddToScheme: () => void;
   onDelete: () => void;
 }
 
-export function HighlightEditTip({ currentColor, onColorChange, onDelete }: EditProps) {
+export function HighlightEditTip({ currentColor, onColorChange, onAddToScheme, onDelete }: EditProps) {
   return (
     <div className="flex flex-col gap-1 bg-white border shadow-lg rounded-xl p-2 min-w-[160px]">
       <div className="flex gap-1.5 justify-center px-1 py-0.5">
@@ -74,6 +75,12 @@ export function HighlightEditTip({ currentColor, onColorChange, onDelete }: Edit
 
       <hr className="border-gray-100" />
 
+      <button
+        onClick={onAddToScheme}
+        className="text-xs text-left px-2 py-1 rounded hover:bg-gray-100 text-gray-700"
+      >
+        + 스킴패널에 추가
+      </button>
       <button
         onClick={onDelete}
         className="text-xs text-left px-2 py-1 rounded hover:bg-red-50 text-red-500"
