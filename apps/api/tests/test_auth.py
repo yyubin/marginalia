@@ -129,6 +129,24 @@ class TestLogout:
         assert response.status_code == 204
 
 
+class TestMe:
+    async def test_returns_current_user(self, client, auth_headers, user):
+        response = await client.get("/api/v1/auth/me", headers=auth_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(user.id)
+        assert data["email"] == user.email
+        assert data["is_admin"] is False
+
+    async def test_reflects_admin_flag(self, client, admin_auth_headers, admin_user):
+        response = await client.get("/api/v1/auth/me", headers=admin_auth_headers)
+        assert response.json()["is_admin"] is True
+
+    async def test_unauthenticated_returns_401_or_403(self, client):
+        response = await client.get("/api/v1/auth/me")
+        assert response.status_code in (401, 403)
+
+
 class TestGoogleOAuth:
     async def test_google_redirect_goes_to_google(self, client):
         response = await client.get("/api/v1/auth/google", follow_redirects=False)
