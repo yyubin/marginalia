@@ -10,6 +10,8 @@ type PdfHighlighterInstance = InstanceType<typeof PdfHighlighter>;
 type PdfViewerLike = {
   container?: HTMLElement;
   currentPageNumber?: number;
+  currentScale?: number;
+  currentScaleValue?: string;
   pagesCount?: number;
   pdfDocument?: { numPages?: number };
   getPageView?: (pageIndex: number) => { div?: HTMLElement };
@@ -69,8 +71,14 @@ export default function PdfViewer({
   const scrollRef = useRef<(h: AppHighlight) => void>(() => {});
   const highlighterRef = useRef<PdfHighlighterInstance>(null);
   const cleanupPageTracking = useRef<(() => void) | null>(null);
+  const currentPageRef = useRef(1);
+  const onPageChangeRef = useRef(onPageChange);
 
   useEffect(() => () => { cleanupPageTracking.current?.(); }, []);
+  useEffect(() => {
+    onPageChangeRef.current = onPageChange;
+  }, [onPageChange]);
+
   // pdfScaleValue prop이 ResizeObserver 트리거 시 재적용되므로
   // 직접 조작과 함께 prop도 동기화해야 스케일이 유지됨
   const [scale, setScale] = useState<string>("page-width");
@@ -82,10 +90,6 @@ export default function PdfViewer({
     (id: string) => highlights.find((h) => h.id === id),
     [highlights]
   );
-
-  const setHighlighterRef = useCallback((node: PdfHighlighterInstance | null) => {
-    highlighterRef.current = node;
-  }, []);
 
   const handlePdfReady = useCallback((pageCount: number) => {
     setTotalPages(pageCount);
@@ -99,10 +103,47 @@ export default function PdfViewer({
 
   const updateCurrentPage = useCallback((page: number) => {
     const nextPage = Math.max(1, Math.floor(page));
+    if (currentPageRef.current === nextPage) return;
+
+    currentPageRef.current = nextPage;
     setCurrentPage(nextPage);
     setPageInput(String(nextPage));
-    onPageChange?.(nextPage);
-  }, [onPageChange]);
+    onPageChangeRef.current?.(nextPage);
+  }, []);
+
+  const getVisiblePageNumber = useCallback((viewer: PdfViewerLike) => {
+    const container = viewer.container;
+    if (!container) return null;
+
+    const pageNodes = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-page-number]")
+    );
+    if (pageNodes.length === 0) return null;
+
+    const containerRect = container.getBoundingClientRect();
+    const viewportCenter = containerRect.top + containerRect.height / 2;
+    let bestPage: number | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const pageNode of pageNodes) {
+      const pageNumber = Number(pageNode.dataset.pageNumber);
+      if (!Number.isFinite(pageNumber)) continue;
+
+      const pageRect = pageNode.getBoundingClientRect();
+      if (pageRect.bottom < containerRect.top || pageRect.top > containerRect.bottom) {
+        continue;
+      }
+
+      const pageCenter = pageRect.top + pageRect.height / 2;
+      const distance = Math.abs(pageCenter - viewportCenter);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestPage = pageNumber;
+      }
+    }
+
+    return bestPage;
+  }, []);
 
   const syncViewerPageState = useCallback(() => {
     const viewer = highlighterRef.current?.viewer as PdfViewerLike | undefined;
@@ -110,8 +151,70 @@ export default function PdfViewer({
 
     const pageCount = viewer.pagesCount ?? viewer.pdfDocument?.numPages ?? 0;
     if (pageCount) setTotalPages(pageCount);
-    if (viewer.currentPageNumber) updateCurrentPage(viewer.currentPageNumber);
-  }, [updateCurrentPage]);
+
+    const visiblePage = getVisiblePageNumber(viewer);
+    const pageNumber = visiblePage ?? viewer.currentPageNumber;
+    if (pageNumber) updateCurrentPage(pageNumber);
+  }, [getVisiblePageNumber, updateCurrentPage]);
+
+  const attachPageTracking = useCallback(() => {
+    if (cleanupPageTracking.current) return true;
+
+    const viewer = highlighterRef.current?.viewer as PdfViewerLike | undefined;
+    if (!viewer) return false;
+
+    syncViewerPageState();
+
+    const eventBus = viewer.eventBus;
+    const scrollContainer = viewer.container;
+    if (!eventBus && !scrollContainer) return false;
+
+    const handler = ({ pageNumber }: { pageNumber: number }) => {
+      updateCurrentPage(pageNumber);
+    };
+    const scrollHandler = () => {
+      syncViewerPageState();
+    };
+
+    eventBus?.on("pagechanging", handler);
+    eventBus?.on("updateviewarea", scrollHandler);
+    scrollContainer?.addEventListener("scroll", scrollHandler, { passive: true });
+
+    cleanupPageTracking.current = () => {
+      eventBus?.off("pagechanging", handler);
+      eventBus?.off("updateviewarea", scrollHandler);
+      scrollContainer?.removeEventListener("scroll", scrollHandler);
+    };
+
+    return true;
+  }, [syncViewerPageState, updateCurrentPage]);
+
+  const setHighlighterRef = useCallback((node: PdfHighlighterInstance | null) => {
+    highlighterRef.current = node;
+    if (!node) {
+      cleanupPageTracking.current?.();
+      cleanupPageTracking.current = null;
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      attachPageTracking();
+    });
+  }, [attachPageTracking]);
+
+  useEffect(() => {
+    if (!highlightsReady) return;
+
+    let attempts = 0;
+    const intervalId = window.setInterval(() => {
+      attempts += 1;
+      if (attachPageTracking() || attempts >= 30) {
+        window.clearInterval(intervalId);
+      }
+    }, 100);
+
+    return () => window.clearInterval(intervalId);
+  }, [attachPageTracking, highlightsReady]);
 
   const navigateViewerToPage = useCallback((page: number) => {
     const viewer = highlighterRef.current?.viewer as PdfViewerLike | undefined;
@@ -202,7 +305,10 @@ export default function PdfViewer({
 
   useEffect(() => {
     if (!pageTarget) return;
-    goToPage(pageTarget.page);
+    const animationFrameId = window.requestAnimationFrame(() => {
+      goToPage(pageTarget.page);
+    });
+    return () => window.cancelAnimationFrame(animationFrameId);
   }, [pageTarget, goToPage]);
 
   useEffect(() => {
@@ -313,26 +419,14 @@ export default function PdfViewer({
               pdfDocument={pdfDocument}
               highlights={highlights}
               pdfScaleValue={scale}
-              onScrollChange={() => {}}
+              onScrollChange={syncViewerPageState}
               scrollRef={(fn) => {
                 scrollRef.current = fn;
-                if (cleanupPageTracking.current) return;
-                const viewer = highlighterRef.current?.viewer as PdfViewerLike | undefined;
-                syncViewerPageState();
-
-                const eventBus = viewer?.eventBus;
-                const scrollContainer = viewer?.container;
-                const handler = ({ pageNumber }: { pageNumber: number }) => {
-                  updateCurrentPage(pageNumber);
-                };
-                const scrollHandler = () => syncViewerPageState();
-
-                eventBus?.on("pagechanging", handler);
-                scrollContainer?.addEventListener("scroll", scrollHandler, { passive: true });
-                cleanupPageTracking.current = () => {
-                  eventBus?.off("pagechanging", handler);
-                  scrollContainer?.removeEventListener("scroll", scrollHandler);
-                };
+                if (!attachPageTracking()) {
+                  window.requestAnimationFrame(() => {
+                    attachPageTracking();
+                  });
+                }
               }}
               onSelectionFinished={(position, content, hideTipAndSelection) => (
                 <HighlightTip
