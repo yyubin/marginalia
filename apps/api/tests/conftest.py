@@ -70,6 +70,20 @@ async def other_auth_headers(other_user):
 
 
 @pytest.fixture
+async def admin_user(db):
+    u = User(email="admin@example.com", name="Admin User", provider="google", is_admin=True)
+    db.add(u)
+    await db.flush()
+    return u
+
+
+@pytest.fixture
+async def admin_auth_headers(admin_user):
+    token = create_access_token(str(admin_user.id))
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
 async def document(db, user):
     doc = Document(
         user_id=user.id,

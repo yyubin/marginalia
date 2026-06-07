@@ -28,3 +28,6 @@ class UserResponse(BaseModel):
     name: str | None
     avatar_url: str | None
     provider: str
+    is_admin: bool
+
+    model_config = {"from_attributes": True}
