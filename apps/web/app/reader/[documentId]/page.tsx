@@ -16,6 +16,7 @@ import TranslatePanel from "@/components/reader/TranslatePanel";
 import BookmarkPanel from "@/components/reader/BookmarkPanel";
 import type { Highlight as StoredHighlight, HighlightColor, UserSettings } from "@/types";
 import type { AppHighlight } from "@/components/reader/PdfViewer";
+import type { TranslateTarget } from "@/components/reader/TranslatePanel";
 
 const PdfViewer = dynamic(() => import("@/components/reader/PdfViewer"), { ssr: false });
 
@@ -25,7 +26,7 @@ export default function ReaderPage() {
   const queryClient = useQueryClient();
   const { highlights, setHighlights, addHighlight, selectHighlight, updateHighlight, removeHighlight } = useHighlightStore();
   const { setBookmarks } = useBookmarkStore();
-  const [translateText, setTranslateText] = useState<string | null>(null);
+  const [translateTarget, setTranslateTarget] = useState<TranslateTarget | null>(null);
   const [loadedHighlightsDocumentId, setLoadedHighlightsDocumentId] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<{ highlight: AppHighlight; nonce: number } | null>(null);
   const [pageTarget, setPageTarget] = useState<{ page: number; nonce: number } | null>(null);
@@ -207,7 +208,7 @@ export default function ReaderPage() {
             onHighlightUpdate={handleHighlightUpdate}
             onHighlightDelete={handleHighlightDelete}
             onHighlightAddToScheme={handleHighlightAddToScheme}
-            onTranslate={(text) => setTranslateText(text)}
+            onTranslate={(target) => setTranslateTarget(target)}
             onHighlightClick={(h) => selectHighlight(h)}
             onPageChange={handlePageChange}
           />
@@ -219,10 +220,16 @@ export default function ReaderPage() {
 
         <div className="w-80 flex flex-col border-l bg-white overflow-hidden shrink-0">
           <SchemePanel documentId={documentId} onHighlightClick={handleHighlightNavigate} />
-          {translateText ? (
+          {translateTarget ? (
             <TranslatePanel
-              text={translateText}
-              onClose={() => setTranslateText(null)}
+              target={translateTarget}
+              onClose={() => setTranslateTarget(null)}
+              onHighlightSaved={(highlight) => {
+                const appHighlight = { ...(highlight as AppHighlight), comment: { text: "", emoji: "" } };
+                addHighlight(appHighlight);
+                selectHighlight(appHighlight);
+                setBottomTab("notes");
+              }}
               documentId={documentId}
             />
           ) : (

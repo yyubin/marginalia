@@ -56,10 +56,19 @@ interface EditProps {
   currentColor: HighlightColor;
   onColorChange: (color: HighlightColor) => void;
   onAddToScheme: () => void;
+  onTranslate: () => void;
+  canTranslate?: boolean;
   onDelete: () => void;
 }
 
-export function HighlightEditTip({ currentColor, onColorChange, onAddToScheme, onDelete }: EditProps) {
+export function HighlightEditTip({
+  currentColor,
+  onColorChange,
+  onAddToScheme,
+  onTranslate,
+  canTranslate = true,
+  onDelete,
+}: EditProps) {
   return (
     <div className="flex flex-col gap-1 bg-white border shadow-lg rounded-xl p-2 min-w-[160px]">
       <div className="flex gap-1.5 justify-center px-1 py-0.5">
@@ -83,6 +92,13 @@ export function HighlightEditTip({ currentColor, onColorChange, onAddToScheme, o
         className="text-xs text-left px-2 py-1 rounded hover:bg-gray-100 text-gray-700"
       >
         + 스킴패널에 추가
+      </button>
+      <button
+        onClick={onTranslate}
+        disabled={!canTranslate}
+        className="text-xs text-left px-2 py-1 rounded hover:bg-gray-100 text-gray-700 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+      >
+        하이라이트 번역
       </button>
       <button
         onClick={onDelete}

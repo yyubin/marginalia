@@ -2,23 +2,41 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
+import type { NewHighlight } from "react-pdf-highlighter";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import type { HighlightColor, HighlightContent } from "@/types";
 
 type TranslateStatus = "idle" | "streaming" | "done" | "error";
+export type TranslateTarget =
+  | {
+      kind: "selection";
+      text: string;
+      position: NewHighlight["position"];
+      content: HighlightContent;
+      color?: HighlightColor;
+    }
+  | {
+      kind: "highlight";
+      text: string;
+      highlightId: string;
+    };
 
 interface Props {
-  text: string;
+  target: TranslateTarget;
   documentId: string;
   onClose: () => void;
+  onHighlightSaved?: (highlight: unknown) => void;
 }
 
-export default function TranslatePanel({ text, documentId, onClose }: Props) {
+export default function TranslatePanel({ target, documentId, onClose, onHighlightSaved }: Props) {
   const [result, setResult] = useState("");
   const [status, setStatus] = useState<TranslateStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
   const queryClient = useQueryClient();
+  const text = target.text;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -80,14 +98,28 @@ export default function TranslatePanel({ text, documentId, onClose }: Props) {
   }, [text, retryNonce]);
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      api.post(`/documents/${documentId}/highlights`, {
-        position: { boundingRect: { x1:0,y1:0,x2:0,y2:0,width:0,height:0 }, rects: [], pageNumber: 0 },
-        content: { text: `[원문] ${text}\n[번역] ${result}` },
-        color: "blue",
-      }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      let createdHighlight: { id: string } | null = null;
+      let highlightId: string;
+
+      if (target.kind === "selection") {
+        createdHighlight = await createHighlightForSelection(documentId, target);
+        highlightId = createdHighlight.id;
+      } else {
+        highlightId = target.highlightId;
+      }
+
+      await addHighlightToScheme(documentId, highlightId);
+      await saveTranslationNote(highlightId, text, result);
+      return createdHighlight;
+    },
+    onSuccess: (createdHighlight) => {
+      if (createdHighlight) onHighlightSaved?.(createdHighlight);
       queryClient.invalidateQueries({ queryKey: ["highlights", documentId] });
+      queryClient.invalidateQueries({ queryKey: ["collection", documentId] });
+      if (target.kind === "highlight") {
+        queryClient.invalidateQueries({ queryKey: ["note", target.highlightId] });
+      }
       onClose();
     },
   });
@@ -121,8 +153,8 @@ export default function TranslatePanel({ text, documentId, onClose }: Props) {
       {(result || status === "error") && (
         <div className="p-3 border-t flex gap-2">
           {result && (
-          <Button size="sm" className="flex-1" onClick={() => saveMutation.mutate()}>
-            메모로 저장
+          <Button size="sm" className="flex-1" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+            하이라이트 메모로 저장
           </Button>
           )}
           {status === "error" && (
@@ -134,6 +166,48 @@ export default function TranslatePanel({ text, documentId, onClose }: Props) {
       )}
     </div>
   );
+}
+
+async function createHighlightForSelection(documentId: string, target: Extract<TranslateTarget, { kind: "selection" }>) {
+  const { data } = await api.post(`/documents/${documentId}/highlights`, {
+    position: target.position,
+    content: target.content,
+    color: target.color ?? "blue",
+  });
+  return data as { id: string };
+}
+
+async function addHighlightToScheme(documentId: string, highlightId: string) {
+  try {
+    await api.post(`/documents/${documentId}/collection/items`, { highlight_id: highlightId });
+  } catch (error) {
+    if (!isConflict(error)) throw error;
+  }
+}
+
+async function saveTranslationNote(highlightId: string, sourceText: string, translatedText: string) {
+  const content = `[원문]\n${sourceText}\n\n[번역]\n${translatedText}`;
+
+  try {
+    const { data: existingNote } = await api.get(`/highlights/${highlightId}/note`);
+    if (existingNote?.id) {
+      await api.patch(`/notes/${existingNote.id}`, { content });
+      return;
+    }
+  } catch (error) {
+    if (!axios.isAxiosError(error) || error.response?.status !== 404) {
+      throw error;
+    }
+  }
+
+  await api.post(`/highlights/${highlightId}/note`, { content });
+}
+
+function isConflict(error: unknown) {
+  return typeof error === "object"
+    && error !== null
+    && "response" in error
+    && (error as { response?: { status?: number } }).response?.status === 409;
 }
 
 async function readErrorMessage(response: Response) {

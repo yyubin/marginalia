@@ -24,6 +24,7 @@ type PdfViewerLike = {
 
 import HighlightTip, { HighlightEditTip } from "./HighlightTip";
 import type { HighlightColor } from "@/types";
+import type { TranslateTarget } from "./TranslatePanel";
 
 const WORKER_SRC = "/pdf.worker.min.mjs";
 
@@ -47,7 +48,7 @@ interface Props {
   onHighlightUpdate: (id: string, color: HighlightColor) => void;
   onHighlightDelete: (id: string) => void;
   onHighlightAddToScheme: (id: string) => void;
-  onTranslate: (text: string) => void;
+  onTranslate: (target: TranslateTarget) => void;
   onHighlightClick: (highlight: AppHighlight) => void;
   onPageChange?: (page: number) => void;
 }
@@ -445,7 +446,15 @@ export default function PdfViewer({
                       hideTipAndSelection();
                     }}
                     onTranslate={() => {
-                      if (selectedText) onTranslate(selectedText);
+                      if (selectedText) {
+                        onTranslate({
+                          kind: "selection",
+                          text: selectedText,
+                          position,
+                          content,
+                          color: "blue",
+                        });
+                      }
                       hideTipAndSelection();
                     }}
                   />
@@ -459,6 +468,7 @@ export default function PdfViewer({
 
               const color = (appHighlight as AppHighlight).color ?? "yellow";
               const style = COLOR_STYLE[color as HighlightColor] ?? COLOR_STYLE.yellow;
+              const highlightText = highlight.content.text?.trim() ?? "";
 
               const openEditTip = () => {
                 onHighlightClick(appHighlight as AppHighlight);
@@ -471,6 +481,17 @@ export default function PdfViewer({
                     }}
                     onAddToScheme={() => {
                       onHighlightAddToScheme(highlight.id);
+                      hideTip();
+                    }}
+                    canTranslate={highlightText.length > 0}
+                    onTranslate={() => {
+                      if (highlightText) {
+                        onTranslate({
+                          kind: "highlight",
+                          text: highlightText,
+                          highlightId: highlight.id,
+                        });
+                      }
                       hideTip();
                     }}
                     onDelete={() => {
