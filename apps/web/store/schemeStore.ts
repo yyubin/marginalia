@@ -18,8 +18,8 @@ export const useSchemeStore = create<SchemeStore>((set, get) => ({
   removeItem: (id) => set((s) => ({ items: s.items.filter((i) => i.id !== id) })),
   reorder: (items) => set({ items }),
   copyAll: () => {
-    const text = get()
-      .items.sort((a, b) => a.position - b.position)
+    const text = [...get().items]
+      .sort((a, b) => a.position - b.position)
       .map((i) => i.highlight.content.text ?? "")
       .filter(Boolean)
       .join("\n");

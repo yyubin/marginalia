@@ -64,6 +64,7 @@ export default function SchemePanel({ documentId, onHighlightClick }: Props) {
   const sorted = [...items].sort((a, b) => a.position - b.position);
   const hasActiveRange = Boolean(activeRange?.from || activeRange?.to);
   const canReorder = !hasActiveRange && sorted.length > 1;
+  const hasItems = sorted.length > 0;
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -134,6 +135,28 @@ export default function SchemePanel({ documentId, onHighlightClick }: Props) {
     reorderMutation.mutate(reordered);
   }
 
+  function copyAllWithNotes() {
+    const text = sorted
+      .map((item, index) => {
+        const highlightText = item.highlight.content.text?.trim();
+        if (!highlightText) return null;
+
+        const pageNumber = item.highlight.position.pageNumber;
+        const note = item.highlight.note?.content?.trim();
+        const parts = [`${index + 1}. p. ${pageNumber}`, highlightText];
+
+        if (note) {
+          parts.push(`[메모]\n${note}`);
+        }
+
+        return parts.join("\n");
+      })
+      .filter(Boolean)
+      .join("\n\n");
+
+    navigator.clipboard.writeText(text);
+  }
+
   return (
     <div className="flex flex-col border-b" style={{ maxHeight: "50%" }}>
       <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -145,9 +168,24 @@ export default function SchemePanel({ documentId, onHighlightClick }: Props) {
             </p>
           )}
         </div>
-        <button onClick={copyAll} className="text-xs text-gray-500 hover:text-black">
-          {hasActiveRange ? "범위 복사" : "전체 복사"}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={copyAll}
+            disabled={!hasItems}
+            className="text-xs text-gray-500 hover:text-black disabled:opacity-30 disabled:hover:text-gray-500"
+          >
+            {hasActiveRange ? "범위 복사" : "전체 복사"}
+          </button>
+          <button
+            type="button"
+            onClick={copyAllWithNotes}
+            disabled={!hasItems}
+            className="text-xs text-gray-500 hover:text-black disabled:opacity-30 disabled:hover:text-gray-500"
+          >
+            메모 포함
+          </button>
+        </div>
       </div>
 
       <form

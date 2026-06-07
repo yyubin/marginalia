@@ -27,7 +27,7 @@ export interface Highlight {
   content: HighlightContent;
   color: HighlightColor;
   created_at: string;
-  note?: Note;
+  note?: Note | null;
 }
 
 export interface Note {

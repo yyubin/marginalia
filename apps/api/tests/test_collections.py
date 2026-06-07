@@ -5,6 +5,7 @@ import pytest
 from app.models.collection import Collection, CollectionItem
 from app.models.document import Document
 from app.models.highlight import Highlight
+from app.models.note import Note
 
 
 POSITION = {"pageNumber": 1, "boundingRect": {}, "rects": []}
@@ -107,6 +108,37 @@ class TestGetCollection:
         )
 
         assert response.status_code == 422
+
+    async def test_returns_highlight_note_for_copy_export(self, client, auth_headers, document, db, user):
+        highlight = Highlight(
+            document_id=document.id,
+            user_id=user.id,
+            position=POSITION,
+            content={"text": "highlight with note"},
+            color="yellow",
+        )
+        collection = Collection(document_id=document.id, user_id=user.id)
+        db.add_all([highlight, collection])
+        await db.flush()
+        db.add_all([
+            CollectionItem(collection_id=collection.id, highlight_id=highlight.id, position=1),
+            Note(
+                highlight_id=highlight.id,
+                document_id=document.id,
+                user_id=user.id,
+                content="note body",
+            ),
+        ])
+        await db.commit()
+
+        response = await client.get(
+            f"/api/v1/documents/{document.id}/collection",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        note = response.json()["items"][0]["highlight"]["note"]
+        assert note["content"] == "note body"
 
 
 class TestAddCollectionItem:

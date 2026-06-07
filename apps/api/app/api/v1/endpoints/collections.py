@@ -130,7 +130,7 @@ async def _load_collection(
     page_col = cast(Highlight.position["pageNumber"].astext, Integer)
     item_query = (
         select(CollectionItem)
-        .options(selectinload(CollectionItem.highlight))
+        .options(selectinload(CollectionItem.highlight).selectinload(Highlight.note))
         .join(Highlight)
         .where(CollectionItem.collection_id == collection_id)
         .order_by(CollectionItem.position)
