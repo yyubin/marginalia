@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # LLM BYOK (bring-your-own-key)
     LLM_KEY_ENCRYPTION_SECRET: str = ""
-    DEFAULT_LLM_FALLBACK_ALLOWED: bool = True
+    DEFAULT_LLM_FALLBACK_ALLOWED: bool = False
 
     # Upload limits
     MAX_DOCUMENTS_PER_USER: int = 3
