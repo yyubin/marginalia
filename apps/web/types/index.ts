@@ -1,5 +1,14 @@
 export type HighlightColor = "yellow" | "green" | "blue" | "pink" | "purple";
 
+export interface User {
+  id: string;
+  email: string;
+  name: string | null;
+  avatar_url: string | null;
+  provider: string;
+  is_admin: boolean;
+}
+
 export interface HighlightPosition {
   boundingRect: DOMRect | Record<string, number>;
   rects: Array<Record<string, number>>;
@@ -67,4 +76,52 @@ export interface Bookmark {
   page: number;
   label: string | null;
   created_at: string;
+}
+
+export interface AdminUserListItem {
+  id: string;
+  email: string;
+  name: string | null;
+  provider: string;
+  is_admin: boolean;
+  is_suspended: boolean;
+  created_at: string;
+  document_count: number;
+}
+
+export interface AdminUserListResponse {
+  items: AdminUserListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface AdminDocumentSummary {
+  id: string;
+  title: string;
+  file_size: number | null;
+  page_count: number | null;
+  created_at: string;
+}
+
+export interface AdminUserDetail {
+  id: string;
+  email: string;
+  name: string | null;
+  provider: string;
+  is_admin: boolean;
+  is_suspended: boolean;
+  created_at: string;
+  documents: AdminDocumentSummary[];
+  total_storage_bytes: number;
+  max_documents: number;
+  max_file_size_mb: number;
+}
+
+export interface AdminStats {
+  total_users: number;
+  total_documents: number;
+  total_storage_bytes: number;
+  signups_last_7_days: number;
+  new_documents_last_7_days: number;
 }

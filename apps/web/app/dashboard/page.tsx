@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { Document } from "@/types";
+import type { Document, User, UserSettings } from "@/types";
 import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
@@ -16,6 +16,18 @@ export default function DashboardPage() {
     queryKey: ["documents"],
     queryFn: () => api.get("/documents").then((r) => r.data),
   });
+
+  const { data: me } = useQuery<User>({
+    queryKey: ["me"],
+    queryFn: () => api.get("/auth/me").then((r) => r.data),
+  });
+
+  const { data: settings } = useQuery<UserSettings>({
+    queryKey: ["settings"],
+    queryFn: () => api.get("/settings").then((r) => r.data),
+  });
+
+  const maxDocuments = settings?.max_documents ?? 3;
 
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -69,14 +81,19 @@ export default function DashboardPage() {
           )}
           <Button
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploadMutation.isPending || (documents?.length ?? 0) >= 3}
-            title={(documents?.length ?? 0) >= 3 ? "최대 3개까지 저장할 수 있습니다" : undefined}
+            disabled={uploadMutation.isPending || (documents?.length ?? 0) >= maxDocuments}
+            title={(documents?.length ?? 0) >= maxDocuments ? `최대 ${maxDocuments}개까지 저장할 수 있습니다` : undefined}
           >
-            {uploadMutation.isPending ? "업로드 중..." : `PDF 업로드 (${documents?.length ?? 0}/3)`}
+            {uploadMutation.isPending ? "업로드 중..." : `PDF 업로드 (${documents?.length ?? 0}/${maxDocuments})`}
           </Button>
           <Button variant="outline" onClick={() => router.push("/settings")}>
             설정
           </Button>
+          {me?.is_admin && (
+            <Button variant="outline" onClick={() => router.push("/admin")}>
+              관리자
+            </Button>
+          )}
           <Button variant="outline" onClick={handleLogout}>
             로그아웃
           </Button>
