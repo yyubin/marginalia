@@ -352,6 +352,11 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
               <p className="text-xs text-gray-600">
                 서버 공용 키 폴백: <span className="font-medium">{detail.llm_fallback_allowed ? "허용" : "허용 안 함"}</span>
               </p>
+              <p className="text-xs text-gray-400">
+                전역 기본값은 &quot;허용 안 함&quot;입니다. 키를 등록하지 않은 사용자는 기본적으로
+                번역 기능을 사용할 수 없으며, 이 계정에 한해 서버 공용 키 사용을 예외적으로 허용하려면
+                위에서 별도로 설정해야 합니다.
+              </p>
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"

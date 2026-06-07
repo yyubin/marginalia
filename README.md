@@ -7,7 +7,7 @@ PDF를 읽으면서 하이라이트, 메모, 북마크를 남기고 AI 번역까
 - **PDF 뷰어**: 페이지 탐색, 확대/축소 등 기본적인 PDF 열람 기능
 - **하이라이트 & 메모**: PDF 본문에 하이라이트를 긋고 메모를 남기며, 색상별로 구분 관리
 - **북마크**: 원하는 페이지를 북마크로 저장하고 빠르게 이동
-- **AI 번역**: Anthropic Claude / OpenAI / Google Gemini를 이용한 스트리밍 번역. 사용자가 직접 발급받은 API 키(BYOK)를 암호화하여 등록해두면 해당 키로 번역하며, 미등록 시 (허용된 경우) 서버 공용 키로 폴백
+- **AI 번역**: Anthropic Claude / OpenAI / Google Gemini를 이용한 스트리밍 번역. 사용자가 직접 발급받은 API 키(BYOK)를 암호화하여 등록해야 사용 가능하며, 키 미등록 시 기본적으로 번역 기능이 제한됨 (관리자가 사용자별로 서버 공용 키 폴백을 허용한 경우에만 예외적으로 사용 가능)
 - **회원 시스템**: 이메일/비밀번호 가입·로그인 및 Google OAuth 2.0 로그인, JWT 기반 인증(액세스/리프레시 토큰)
 - **업로드 한도 관리**: 사용자별 최대 문서 개수·파일 용량 제한(기본값: 문서 3개, 파일당 50MB)을 전역 설정 또는 사용자별 오버라이드로 관리
 - **관리자 기능**: 관리자 권한(`is_admin`)을 가진 사용자가 회원 목록/상세 조회, 업로드 한도 조정, 번역 LLM 폴백 허용 여부 조정, 계정 정지·삭제, 시스템 통계 확인 가능
@@ -85,7 +85,7 @@ LLM_KEY_ENCRYPTION_SECRET=<random-secret-string>
 # 선택 - 미설정 시 기본값 사용
 MAX_DOCUMENTS_PER_USER=3
 MAX_FILE_SIZE_MB=50
-DEFAULT_LLM_FALLBACK_ALLOWED=true
+DEFAULT_LLM_FALLBACK_ALLOWED=false
 ```
 
 **`apps/web/.env.local`**

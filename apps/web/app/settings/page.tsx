@@ -179,10 +179,11 @@ function LLMKeysSection({ settings, isLoading }: { settings?: UserSettings; isLo
       <div>
         <h2 className="text-sm font-semibold">번역 LLM API 키</h2>
         <p className="text-xs text-gray-400 mt-1">
-          직접 발급받은 API 키를 등록하면 번역 시 해당 키로 호출합니다. 키를 등록하지 않으면{" "}
+          번역 기능을 사용하려면 직접 발급받은 API 키를 등록해야 합니다. 서버 공용 키로의 자동 폴백은
+          기본적으로 제공되지 않으며, 키를 등록하지 않으면{" "}
           {settings?.llm_fallback_allowed
-            ? "서버 공용 키로 번역이 동작합니다."
-            : "관리자 설정에 따라 번역 기능을 사용할 수 없습니다."}
+            ? "관리자가 이 계정에 한해 예외적으로 서버 공용 키 사용을 허용해두어 해당 키로 번역이 동작합니다."
+            : "번역 기능을 사용할 수 없습니다."}
         </p>
       </div>
 
