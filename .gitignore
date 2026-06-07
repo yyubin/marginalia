@@ -20,7 +20,9 @@ dist/
 # Environment
 .env
 .env.local
+.env.prod
 apps/api/.env
+apps/api/.env.prod
 apps/web/.env.local
 
 # Build outputs
