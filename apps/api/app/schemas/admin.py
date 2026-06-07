@@ -46,12 +46,19 @@ class AdminUserDetail(BaseModel):
     total_storage_bytes: int
     max_documents: int
     max_file_size_mb: int
+    llm_fallback_allowed: bool
+    llm_providers_configured: list[str]
 
 
 class AdminUserLimitsUpdate(BaseModel):
     # null clears the override and falls back to the global default
     max_documents: int | None = Field(ge=1, le=1000)
     max_file_size_mb: int | None = Field(ge=1, le=2000)
+
+
+class AdminLLMFallbackUpdate(BaseModel):
+    # null clears the override and falls back to the global default
+    llm_fallback_allowed: bool | None = None
 
 
 class AdminStatsResponse(BaseModel):

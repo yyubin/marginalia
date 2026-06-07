@@ -10,8 +10,10 @@ from app.core.database import get_db
 from app.core.deps import get_current_admin
 from app.models.document import Document
 from app.models.user import User
+from app.models.user_llm_key import UserLLMKey
 from app.models.user_settings import UserSettings
 from app.schemas.admin import (
+    AdminLLMFallbackUpdate,
     AdminStatsResponse,
     AdminUserDetail,
     AdminUserLimitsUpdate,
@@ -40,6 +42,11 @@ async def _build_user_detail(db: AsyncSession, user: User) -> AdminUserDetail:
     user_settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
     max_documents = user_settings.effective_max_documents if user_settings else settings.MAX_DOCUMENTS_PER_USER
     max_file_size_mb = user_settings.effective_max_file_size_mb if user_settings else settings.MAX_FILE_SIZE_MB
+    llm_fallback_allowed = (
+        user_settings.effective_llm_fallback_allowed if user_settings else settings.DEFAULT_LLM_FALLBACK_ALLOWED
+    )
+
+    llm_keys = (await db.execute(select(UserLLMKey.provider).where(UserLLMKey.user_id == user.id))).scalars().all()
 
     return AdminUserDetail(
         id=user.id,
@@ -53,6 +60,8 @@ async def _build_user_detail(db: AsyncSession, user: User) -> AdminUserDetail:
         total_storage_bytes=sum(doc.file_size or 0 for doc in docs),
         max_documents=max_documents,
         max_file_size_mb=max_file_size_mb,
+        llm_fallback_allowed=llm_fallback_allowed,
+        llm_providers_configured=list(llm_keys),
     )
 
 
@@ -127,6 +136,26 @@ async def update_user_limits(
 
     user_settings.max_documents = body.max_documents
     user_settings.max_file_size_mb = body.max_file_size_mb
+    await db.commit()
+    await db.refresh(user)
+
+    return await _build_user_detail(db, user)
+
+
+@router.patch("/users/{user_id}/llm-fallback", response_model=AdminUserDetail)
+async def update_user_llm_fallback(
+    user_id: uuid.UUID,
+    body: AdminLLMFallbackUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    user = await _get_user_or_404(db, user_id)
+
+    user_settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+    if not user_settings:
+        user_settings = UserSettings(user_id=user.id)
+        db.add(user_settings)
+
+    user_settings.llm_fallback_allowed = body.llm_fallback_allowed
     await db.commit()
     await db.refresh(user)
 

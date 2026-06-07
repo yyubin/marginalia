@@ -4,5 +4,15 @@ from app.models.highlight import Highlight
 from app.models.note import Note
 from app.models.collection import Collection, CollectionItem
 from app.models.user_settings import UserSettings
+from app.models.user_llm_key import UserLLMKey
 
-__all__ = ["User", "Document", "Highlight", "Note", "Collection", "CollectionItem", "UserSettings"]
+__all__ = [
+    "User",
+    "Document",
+    "Highlight",
+    "Note",
+    "Collection",
+    "CollectionItem",
+    "UserSettings",
+    "UserLLMKey",
+]

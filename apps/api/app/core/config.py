@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # Anthropic
     ANTHROPIC_API_KEY: str = ""
 
+    # LLM BYOK (bring-your-own-key)
+    LLM_KEY_ENCRYPTION_SECRET: str = ""
+    DEFAULT_LLM_FALLBACK_ALLOWED: bool = True
+
     # Upload limits
     MAX_DOCUMENTS_PER_USER: int = 3
     MAX_FILE_SIZE_MB: int = 50

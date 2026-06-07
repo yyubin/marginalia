@@ -2,8 +2,10 @@ from unittest.mock import patch
 
 import pytest
 
+from app.core.config import settings
 from app.models.document import Document
 from app.models.user import User
+from app.models.user_llm_key import UserLLMKey
 from app.models.user_settings import UserSettings
 
 
@@ -69,6 +71,15 @@ class TestGetUserDetail:
         assert data["documents"][0]["id"] == str(document.id)
         assert data["max_documents"] == 3
         assert data["max_file_size_mb"] == 50
+        assert data["llm_fallback_allowed"] == settings.DEFAULT_LLM_FALLBACK_ALLOWED
+        assert data["llm_providers_configured"] == []
+
+    async def test_reflects_registered_llm_providers(self, client, admin_auth_headers, db, user):
+        db.add(UserLLMKey(user_id=user.id, provider="openai", encrypted_key="enc", key_preview="prev"))
+        await db.flush()
+
+        response = await client.get(f"/api/v1/admin/users/{user.id}", headers=admin_auth_headers)
+        assert response.json()["llm_providers_configured"] == ["openai"]
 
     async def test_reflects_override_limits(self, client, admin_auth_headers, db, user):
         db.add(UserSettings(user_id=user.id, max_documents=10, max_file_size_mb=200))
@@ -134,6 +145,58 @@ class TestUpdateUserLimits:
         response = await client.patch(
             "/api/v1/admin/users/00000000-0000-0000-0000-000000000000/limits",
             json={"max_documents": 5, "max_file_size_mb": 100},
+            headers=admin_auth_headers,
+        )
+        assert response.status_code == 404
+
+
+class TestUpdateLLMFallback:
+    async def test_sets_override_to_false(self, client, admin_auth_headers, user):
+        response = await client.patch(
+            f"/api/v1/admin/users/{user.id}/llm-fallback",
+            json={"llm_fallback_allowed": False},
+            headers=admin_auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["llm_fallback_allowed"] is False
+
+    async def test_sets_override_to_true(self, client, admin_auth_headers, db, user):
+        db.add(UserSettings(user_id=user.id, llm_fallback_allowed=False))
+        await db.flush()
+
+        response = await client.patch(
+            f"/api/v1/admin/users/{user.id}/llm-fallback",
+            json={"llm_fallback_allowed": True},
+            headers=admin_auth_headers,
+        )
+        assert response.json()["llm_fallback_allowed"] is True
+
+    async def test_clears_override_with_null(self, client, admin_auth_headers, db, user):
+        db.add(UserSettings(user_id=user.id, llm_fallback_allowed=False))
+        await db.flush()
+
+        response = await client.patch(
+            f"/api/v1/admin/users/{user.id}/llm-fallback",
+            json={"llm_fallback_allowed": None},
+            headers=admin_auth_headers,
+        )
+        assert response.json()["llm_fallback_allowed"] == settings.DEFAULT_LLM_FALLBACK_ALLOWED
+
+    async def test_creates_settings_row_if_missing(self, client, admin_auth_headers, user):
+        response = await client.patch(
+            f"/api/v1/admin/users/{user.id}/llm-fallback",
+            json={"llm_fallback_allowed": False},
+            headers=admin_auth_headers,
+        )
+        assert response.status_code == 200
+
+        get_resp = await client.get(f"/api/v1/admin/users/{user.id}", headers=admin_auth_headers)
+        assert get_resp.json()["llm_fallback_allowed"] is False
+
+    async def test_nonexistent_user_returns_404(self, client, admin_auth_headers):
+        response = await client.patch(
+            "/api/v1/admin/users/00000000-0000-0000-0000-000000000000/llm-fallback",
+            json={"llm_fallback_allowed": False},
             headers=admin_auth_headers,
         )
         assert response.status_code == 404

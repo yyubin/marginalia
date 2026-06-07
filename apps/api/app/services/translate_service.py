@@ -1,33 +1,41 @@
-from collections.abc import AsyncGenerator
-
-import anthropic
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.crypto import decrypt_secret
+from app.models.user import User
+from app.models.user_llm_key import UserLLMKey
+from app.models.user_settings import UserSettings
+from app.services.llm_providers import LLMProvider, get_provider
 
-LANG_NAMES = {
-    "ko": "Korean",
-    "en": "English",
-    "ja": "Japanese",
-    "zh": "Chinese",
-    "fr": "French",
-    "de": "German",
-    "es": "Spanish",
-}
+SERVER_FALLBACK_PROVIDER = "anthropic"
 
 
-async def stream_translation(text: str, target_lang: str = "ko") -> AsyncGenerator[str, None]:
-    lang_name = LANG_NAMES.get(target_lang, target_lang)
-    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+async def resolve_translation_credentials(db: AsyncSession, user: User) -> tuple[LLMProvider, str] | None:
+    """Resolves which LLM provider + API key a translation request should use.
 
-    async with client.messages.stream(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=2048,
-        messages=[
-            {
-                "role": "user",
-                "content": f"Translate the following text to {lang_name}. Output only the translation, no explanations:\n\n{text}",
-            }
-        ],
-    ) as stream:
-        async for text_chunk in stream.text_stream:
-            yield text_chunk
+    Returns (provider, api_key). Returns None if the user has no key registered
+    for their chosen provider and is not allowed to fall back to the server's
+    shared key (in which case the caller should reject the request).
+    """
+    user_settings = await db.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+
+    provider_name = SERVER_FALLBACK_PROVIDER
+    if user_settings and user_settings.default_llm_provider:
+        provider_name = user_settings.default_llm_provider
+
+    user_key = await db.scalar(
+        select(UserLLMKey).where(UserLLMKey.user_id == user.id, UserLLMKey.provider == provider_name)
+    )
+    if user_key:
+        return get_provider(provider_name), decrypt_secret(user_key.encrypted_key)
+
+    fallback_allowed = (
+        user_settings.effective_llm_fallback_allowed
+        if user_settings is not None
+        else settings.DEFAULT_LLM_FALLBACK_ALLOWED
+    )
+    if not fallback_allowed:
+        return None
+
+    return get_provider(SERVER_FALLBACK_PROVIDER), settings.ANTHROPIC_API_KEY
