@@ -49,6 +49,8 @@ export interface CollectionItem {
 
 export interface UserSettings {
   highlights_per_page: number;
+  max_documents: number;
+  max_file_size_mb: number;
 }
 
 export interface Collection {

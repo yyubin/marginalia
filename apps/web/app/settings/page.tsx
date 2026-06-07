@@ -25,6 +25,8 @@ export default function SettingsPage() {
     <SettingsForm
       key={initialPerPage}
       initialPerPage={initialPerPage}
+      maxDocuments={settings?.max_documents}
+      maxFileSizeMb={settings?.max_file_size_mb}
       isLoading={isLoading}
       onBack={() => router.push("/dashboard")}
     />
@@ -33,10 +35,14 @@ export default function SettingsPage() {
 
 function SettingsForm({
   initialPerPage,
+  maxDocuments,
+  maxFileSizeMb,
   isLoading,
   onBack,
 }: {
   initialPerPage: number;
+  maxDocuments?: number;
+  maxFileSizeMb?: number;
   isLoading: boolean;
   onBack: () => void;
 }) {
@@ -104,6 +110,18 @@ function SettingsForm({
               저장
             </Button>
             {saved && <span className="text-xs text-green-500">저장되었습니다</span>}
+          </div>
+        </section>
+
+        <section className="bg-white rounded-xl border p-6 space-y-3">
+          <h2 className="text-sm font-semibold">업로드 한도</h2>
+          <div className="flex items-center justify-between text-sm text-gray-700">
+            <span>저장 가능한 PDF 개수</span>
+            <span className="font-medium">{maxDocuments ?? "-"}개</span>
+          </div>
+          <div className="flex items-center justify-between text-sm text-gray-700">
+            <span>파일 당 최대 용량</span>
+            <span className="font-medium">{maxFileSizeMb ?? "-"}MB</span>
           </div>
         </section>
       </div>
