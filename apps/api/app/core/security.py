@@ -7,6 +7,16 @@ from jose import JWTError, jwt
 from app.core.config import settings
 
 
+def validate_password(v: str) -> str:
+    if len(v) < settings.PASSWORD_MIN_LENGTH:
+        raise ValueError(f"비밀번호는 {settings.PASSWORD_MIN_LENGTH}자 이상이어야 합니다")
+    if settings.PASSWORD_REQUIRE_LETTER and not any(c.isalpha() for c in v):
+        raise ValueError("비밀번호에 영문자가 포함되어야 합니다")
+    if settings.PASSWORD_REQUIRE_DIGIT and not any(c.isdigit() for c in v):
+        raise ValueError("비밀번호에 숫자가 포함되어야 합니다")
+    return v
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 

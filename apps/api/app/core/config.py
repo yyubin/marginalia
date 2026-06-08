@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     COOKIE_SAMESITE: str = "lax"      # "none" when API and frontend are on different domains
     COOKIE_DOMAIN: str = ""           # e.g. ".example.com" for subdomain sharing
 
+    # Password policy
+    PASSWORD_MIN_LENGTH: int = 8
+    PASSWORD_REQUIRE_LETTER: bool = True
+    PASSWORD_REQUIRE_DIGIT: bool = True
+
 
 
 settings = Settings()

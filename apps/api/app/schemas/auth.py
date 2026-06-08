@@ -2,6 +2,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, field_validator
 
+from app.core.security import validate_password
+
 
 class SignupRequest(BaseModel):
     email: EmailStr
@@ -10,14 +12,8 @@ class SignupRequest(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def password_strength(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("비밀번호는 8자 이상이어야 합니다")
-        if not any(c.isalpha() for c in v):
-            raise ValueError("비밀번호에 영문자가 포함되어야 합니다")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("비밀번호에 숫자가 포함되어야 합니다")
-        return v
+    def check_password(cls, v: str) -> str:
+        return validate_password(v)
 
 
 class LoginRequest(BaseModel):
@@ -65,14 +61,8 @@ class ResetPasswordRequest(BaseModel):
 
     @field_validator("new_password")
     @classmethod
-    def password_strength(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("비밀번호는 8자 이상이어야 합니다")
-        if not any(c.isalpha() for c in v):
-            raise ValueError("비밀번호에 영문자가 포함되어야 합니다")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("비밀번호에 숫자가 포함되어야 합니다")
-        return v
+    def check_password(cls, v: str) -> str:
+        return validate_password(v)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -81,11 +71,5 @@ class ChangePasswordRequest(BaseModel):
 
     @field_validator("new_password")
     @classmethod
-    def password_strength(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("비밀번호는 8자 이상이어야 합니다")
-        if not any(c.isalpha() for c in v):
-            raise ValueError("비밀번호에 영문자가 포함되어야 합니다")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("비밀번호에 숫자가 포함되어야 합니다")
-        return v
+    def check_password(cls, v: str) -> str:
+        return validate_password(v)
