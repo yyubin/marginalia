@@ -59,6 +59,9 @@ async def upload_document(
             detail=f"파일 크기는 {max_file_size_mb}MB 이하여야 합니다",
         )
 
+    if not file_bytes.startswith(b"%PDF-"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효하지 않은 PDF 파일입니다")
+
     file_key = f"{current_user.id}/{uuid.uuid4()}.pdf"
     upload_file(file_bytes, file_key)
 
