@@ -142,6 +142,8 @@ function SettingsForm({
         <LLMKeysSection settings={settings} isLoading={isLoading} />
 
         {provider === "email" && <ChangePasswordSection />}
+
+        <DeleteAccountSection />
       </div>
 
       <Footer />
@@ -285,6 +287,69 @@ function getPasswordStrength(password: string): { score: number; label: string; 
   if (score <= 3) return { score, label: "보통", color: "bg-yellow-400" };
   if (score <= 4) return { score, label: "강함", color: "bg-green-500" };
   return { score, label: "매우 강함", color: "bg-green-400" };
+}
+
+function DeleteAccountSection() {
+  const router = useRouter();
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const CONFIRM_TEXT = "계정 삭제";
+
+  const mutation = useMutation({
+    mutationFn: () => api.delete("/auth/me"),
+    onSuccess: () => {
+      localStorage.clear();
+      router.push("/login");
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(detail ?? "계정 삭제에 실패했습니다. 다시 시도해 주세요.");
+    },
+  });
+
+  const handleDelete = () => {
+    setError(null);
+    mutation.mutate();
+  };
+
+  return (
+    <section className="bg-white rounded-xl border border-red-200 p-6 space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-red-600">계정 삭제</h2>
+        <p className="text-xs text-gray-500 mt-1">
+          계정을 삭제하면 모든 문서, 하이라이트, 노트, 컬렉션이 <strong>영구적으로 삭제</strong>됩니다.
+          이 작업은 되돌릴 수 없습니다.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm text-gray-700">
+          계속하려면 아래에{" "}
+          <span className="font-mono font-semibold text-red-500">{CONFIRM_TEXT}</span>
+          을(를) 입력하세요
+        </label>
+        <input
+          type="text"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          placeholder={CONFIRM_TEXT}
+          className="w-full border border-red-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-400"
+        />
+      </div>
+
+      {error && <p className="text-xs text-red-500">{error}</p>}
+
+      <Button
+        size="sm"
+        variant="destructive"
+        disabled={confirm !== CONFIRM_TEXT || mutation.isPending}
+        onClick={handleDelete}
+      >
+        {mutation.isPending ? "삭제 중..." : "계정 영구 삭제"}
+      </Button>
+    </section>
+  );
 }
 
 function ChangePasswordSection() {
