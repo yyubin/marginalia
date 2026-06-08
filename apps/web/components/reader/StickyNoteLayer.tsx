@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -17,7 +17,19 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
   const activeTool = useReaderStore((s) => s.activeTool);
   const queryClient = useQueryClient();
   const [pageElements, setPageElements] = useState<Map<number, HTMLElement>>(new Map());
+  // Persistent host containers we own, one per pdf.js page div — this is the
+  // portal target render reads from. We portal notes into these instead of
+  // directly into the page div, because pdf.js's reset() (fired on zoom /
+  // page-width fit / re-render) removes every child of the page div it doesn't
+  // recognise, which would otherwise wipe our notes. The host node object stays
+  // alive across such removals (React's portal content rides along), so
+  // reattaching it restores everything without a React remount or flicker.
+  const [hosts, setHosts] = useState<Map<HTMLElement, HTMLDivElement>>(new Map());
   const [newNoteId, setNewNoteId] = useState<string | null>(null);
+
+  // Node store for hosts. Mutated only inside refreshPages (a callback, never
+  // during render), so it's safe to read .current there.
+  const hostsRef = useRef<Map<HTMLElement, HTMLDivElement>>(new Map());
 
   // ── Fetch notes ────────────────────────────────────────────────────────────
   const { data: notes = [] } = useQuery<StickyNoteType[]>({
@@ -71,14 +83,35 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
     // Ensure absolute-positioned sticky notes stay within each page's bounds
     nodes.forEach((node) => { node.style.position = "relative"; });
 
-    setPageElements((prev) => {
-      if (nodes.length === 0) return prev.size === 0 ? prev : new Map();
+    const map = new Map<number, HTMLElement>();
+    nodes.forEach((node) => {
+      const n = parseInt(node.dataset.pageNumber ?? "0", 10);
+      if (n > 0) map.set(n, node);
+    });
 
-      const map = new Map<number, HTMLElement>();
-      nodes.forEach((node) => {
-        const n = parseInt(node.dataset.pageNumber ?? "0", 10);
-        if (n > 0) map.set(n, node);
-      });
+    // Create a host per live page and (re)attach it — pdf.js may have detached
+    // it during its last render — then prune hosts for pages that are gone.
+    const live = new Set(map.values());
+    map.forEach((pageEl) => {
+      let host = hostsRef.current.get(pageEl);
+      if (!host) {
+        host = document.createElement("div");
+        host.setAttribute("data-sticky-layer", "");
+        host.style.position = "absolute";
+        host.style.inset = "0";
+        host.style.pointerEvents = "none"; // notes/overlay opt back in individually
+        hostsRef.current.set(pageEl, host);
+      }
+      if (host.parentNode !== pageEl) pageEl.appendChild(host);
+    });
+    hostsRef.current.forEach((host, pageEl) => {
+      if (!live.has(pageEl)) {
+        host.remove();
+        hostsRef.current.delete(pageEl);
+      }
+    });
+
+    setPageElements((prev) => {
       if (
         map.size === prev.size &&
         [...map.entries()].every(([k, v]) => prev.get(k) === v)
@@ -86,6 +119,17 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
         return prev;
       }
       return map;
+    });
+    // Publish hosts for render. Membership only changes when pages do, so a
+    // bare reattach (same node set) keeps the previous map and skips re-render.
+    setHosts((prev) => {
+      if (
+        prev.size === hostsRef.current.size &&
+        [...hostsRef.current.entries()].every(([k, v]) => prev.get(k) === v)
+      ) {
+        return prev;
+      }
+      return new Map(hostsRef.current);
     });
   }, [pdfContainer]);
 
@@ -146,13 +190,15 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
   return (
     <>
       {Array.from(pageElements.entries()).map(([pageNum, pageEl]) => {
+        const host = hosts.get(pageEl);
+        if (!host) return null;
         const pageNotes = notesByPage.get(pageNum) ?? [];
         return createPortal(
-          <div data-sticky-layer="" className="contents">
+          <>
             {/* Transparent click overlay — only shown in sticky-note mode */}
             {activeTool === "sticky-note" && (
               <div
-                className="absolute inset-0"
+                className="absolute inset-0 pointer-events-auto"
                 style={{ zIndex: 9 }}
                 onClick={(e) => handlePageClick(e, pageEl, pageNum)}
               />
@@ -171,8 +217,8 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
                 onDelete={() => deleteMutation.mutate(note.id)}
               />
             ))}
-          </div>,
-          pageEl,
+          </>,
+          host,
           `sticky-${pageNum}`
         );
       })}
