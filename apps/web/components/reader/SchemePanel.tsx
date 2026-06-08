@@ -45,7 +45,7 @@ export default function SchemePanel({ documentId, onHighlightClick }: Props) {
     };
   }, [activeRange]);
 
-  const { data: collectionData } = useQuery<Collection>({
+  const { data: collectionData, isFetching: isRangeLoading } = useQuery<Collection>({
     queryKey: ["collection", documentId, activeRange],
     queryFn: () =>
       api.get(`/documents/${documentId}/collection`, { params: collectionParams }).then((r) => r.data),
@@ -217,9 +217,10 @@ export default function SchemePanel({ documentId, onHighlightClick }: Props) {
           />
           <button
             type="submit"
+            disabled={isRangeLoading}
             className="h-7 px-2 rounded bg-gray-900 text-white text-xs hover:bg-black disabled:opacity-40"
           >
-            적용
+            {isRangeLoading ? "적용 중..." : "적용"}
           </button>
           <button
             type="button"
