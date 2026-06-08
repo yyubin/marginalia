@@ -40,19 +40,17 @@ export default function TranslatePanel({ target, documentId, onClose, onHighligh
 
   useEffect(() => {
     const controller = new AbortController();
+    const clientTimeout = setTimeout(() => controller.abort(), 35_000);
 
     async function translate() {
       setResult("");
       setErrorMessage(null);
       setStatus("streaming");
-      const token = localStorage.getItem("access_token");
       try {
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/translate`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ text, target_lang: "ko" }),
           signal: controller.signal,
         });
@@ -93,6 +91,7 @@ export default function TranslatePanel({ target, documentId, onClose, onHighligh
 
     translate();
     return () => {
+      clearTimeout(clientTimeout);
       controller.abort();
     };
   }, [text, retryNonce]);

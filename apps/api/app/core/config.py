@@ -71,5 +71,8 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     SENTRY_TRACES_SAMPLE_RATE: float = 0.01
 
+    # LLM translation
+    TRANSLATE_TIMEOUT_SECONDS: int = 30
+
 
 settings = Settings()

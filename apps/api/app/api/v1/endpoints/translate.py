@@ -1,9 +1,11 @@
+import asyncio
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user, get_verified_user
 from app.core.rate_limit import limiter
@@ -49,14 +51,20 @@ async def translate(
             "target_lang": body.target_lang,
         })
         try:
-            async for chunk in provider.stream_translate(
-                api_key,
-                body.text,
-                body.target_lang,
-                body.source_lang,
-            ):
-                yield _sse("delta", {"text": chunk})
+            async with asyncio.timeout(settings.TRANSLATE_TIMEOUT_SECONDS):
+                async for chunk in provider.stream_translate(
+                    api_key,
+                    body.text,
+                    body.target_lang,
+                    body.source_lang,
+                ):
+                    yield _sse("delta", {"text": chunk})
             yield _sse("done", {})
+        except TimeoutError:
+            yield _sse("error", {
+                "code": "timeout",
+                "message": "번역 시간이 초과되었습니다. 다시 시도해주세요",
+            })
         except Exception:
             yield _sse("error", {
                 "code": "provider_error",
