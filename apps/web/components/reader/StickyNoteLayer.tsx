@@ -58,10 +58,12 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
     },
   });
 
-  // ── Discover page DOM elements via polling ─────────────────────────────────
-  // MutationObserver causes an infinite loop (portal insertions re-trigger it).
-  // Continuous interval polling: detects both initial render and page element
-  // replacement that can happen when pdf.js finishes loading.
+  // ── Discover page DOM elements via MutationObserver ────────────────────────
+  // Naively observing the container loops forever because our own portal
+  // (wrapped in [data-sticky-layer]) mutates it too. We filter those out so we
+  // only react to *external* DOM changes — e.g. pdf.js swapping page elements —
+  // which lets us refresh immediately instead of polling and risking notes
+  // flickering out of sync with the page DOM.
   const refreshPages = useCallback(() => {
     const root = pdfContainer ?? document.body;
     const nodes = root.querySelectorAll<HTMLElement>("[data-page-number]");
@@ -88,10 +90,22 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
   }, [pdfContainer]);
 
   useEffect(() => {
+    const root = pdfContainer ?? document.body;
     refreshPages(); // immediate check
-    const id = setInterval(refreshPages, 500);
-    return () => clearInterval(id);
-  }, [refreshPages]);
+
+    const isOwnNode = (node: Node) =>
+      node instanceof HTMLElement &&
+      (node.matches("[data-sticky-layer]") || !!node.closest("[data-sticky-layer]"));
+
+    const observer = new MutationObserver((mutations) => {
+      const isExternalChange = mutations.some(
+        (m) => ![...m.addedNodes, ...m.removedNodes].every(isOwnNode)
+      );
+      if (isExternalChange) refreshPages();
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [pdfContainer, refreshPages]);
 
   // ── Cursor style when in sticky-note mode ─────────────────────────────────
   useEffect(() => {
@@ -134,7 +148,7 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
       {Array.from(pageElements.entries()).map(([pageNum, pageEl]) => {
         const pageNotes = notesByPage.get(pageNum) ?? [];
         return createPortal(
-          <>
+          <div data-sticky-layer="" className="contents">
             {/* Transparent click overlay — only shown in sticky-note mode */}
             {activeTool === "sticky-note" && (
               <div
@@ -157,7 +171,7 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
                 onDelete={() => deleteMutation.mutate(note.id)}
               />
             ))}
-          </>,
+          </div>,
           pageEl,
           `sticky-${pageNum}`
         );

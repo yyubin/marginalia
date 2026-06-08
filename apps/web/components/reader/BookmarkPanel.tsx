@@ -130,7 +130,9 @@ export default function BookmarkPanel({ documentId, currentPage, onNavigate }: P
                         수정
                       </button>
                       <button
-                        onClick={() => deleteMutation.mutate(bookmark.id)}
+                        onClick={() => {
+                          if (confirm("이 북마크를 삭제하시겠습니까?")) deleteMutation.mutate(bookmark.id);
+                        }}
                         disabled={deleteMutation.isPending}
                         className="text-[10px] text-red-400 hover:text-red-600"
                       >
