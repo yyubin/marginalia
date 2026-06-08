@@ -36,6 +36,7 @@ export default function ReaderPage() {
   // 하이라이트 점진적 로드를 위한 상태
   const loadedUntilPageRef = useRef(0); // 마지막으로 로드한 PDF 페이지 번호
   const isLoadingMoreRef = useRef(false);
+  const pageRestoredRef = useRef(false);
 
   useEffect(() => {
     if (!localStorage.getItem("access_token")) router.push("/login");
@@ -92,6 +93,17 @@ export default function ReaderPage() {
     };
   }, [documentId, highlightPageLimit, setHighlights]);
 
+  // 마지막 페이지 복원
+  useEffect(() => {
+    if (!pdfUrl || loadedHighlightsDocumentId !== documentId || pageRestoredRef.current) return;
+    pageRestoredRef.current = true;
+    const saved = localStorage.getItem(`reader_page_${documentId}`);
+    if (saved) {
+      const page = parseInt(saved, 10);
+      if (page > 1) setPageTarget({ page, nonce: Date.now() });
+    }
+  }, [pdfUrl, loadedHighlightsDocumentId, documentId]);
+
   // 북마크 초기 로드
   useEffect(() => {
     if (!documentId) return;
@@ -103,6 +115,7 @@ export default function ReaderPage() {
   // PDF 현재 페이지가 바뀌면 추가 하이라이트를 로드
   const handlePageChange = useCallback(async (currentPage: number) => {
     setCurrentPage(currentPage);
+    localStorage.setItem(`reader_page_${documentId}`, String(currentPage));
     if (!settings) return;
     if (isLoadingMoreRef.current) return;
     if (currentPage <= loadedUntilPageRef.current) return; // 이미 로드된 범위
