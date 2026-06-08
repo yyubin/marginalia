@@ -48,13 +48,16 @@ interface Props {
   highlightsReady: boolean;
   scrollTarget: { highlight: AppHighlight; nonce: number } | null;
   pageTarget: { page: number; nonce: number } | null;
-  onHighlightCreate: (highlight: NewHighlight, color: HighlightColor, addToScheme?: boolean) => void;
-  onHighlightUpdate: (id: string, color: HighlightColor) => void;
-  onHighlightDelete: (id: string) => void;
-  onHighlightAddToScheme: (id: string) => void;
-  onTranslate: (target: TranslateTarget) => void;
-  onHighlightClick: (highlight: AppHighlight) => void;
+  onHighlightCreate?: (highlight: NewHighlight, color: HighlightColor, addToScheme?: boolean) => void;
+  onHighlightUpdate?: (id: string, color: HighlightColor) => void;
+  onHighlightDelete?: (id: string) => void;
+  onHighlightAddToScheme?: (id: string) => void;
+  onTranslate?: (target: TranslateTarget) => void;
+  onHighlightClick?: (highlight: AppHighlight) => void;
   onPageChange?: (page: number) => void;
+  // Public read-only share view: no creation/edit UI; sticky notes load via token.
+  readOnly?: boolean;
+  shareToken?: string;
 }
 
 const ZOOM_STEP = 0.25;
@@ -75,6 +78,8 @@ export default function PdfViewer({
   onTranslate,
   onHighlightClick,
   onPageChange,
+  readOnly = false,
+  shareToken,
 }: Props) {
   const scrollRef = useRef<(h: AppHighlight) => void>(() => {});
   const highlighterRef = useRef<PdfHighlighterInstance>(null);
@@ -418,21 +423,30 @@ export default function PdfViewer({
         >
           +
         </button>
-        <div className="w-px h-3.5 bg-gray-200 mx-1" />
-        <button
-          onClick={toggleStickyNoteTool}
-          className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
-            activeTool === "sticky-note"
-              ? "bg-yellow-400 text-white"
-              : "hover:bg-gray-100 text-gray-500"
-          }`}
-          title="스티커 메모 추가 (클릭 후 PDF를 클릭)"
-        >
-          <StickyNoteIcon size={14} />
-        </button>
+        {!readOnly && (
+          <>
+            <div className="w-px h-3.5 bg-gray-200 mx-1" />
+            <button
+              onClick={toggleStickyNoteTool}
+              className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
+                activeTool === "sticky-note"
+                  ? "bg-yellow-400 text-white"
+                  : "hover:bg-gray-100 text-gray-500"
+              }`}
+              title="스티커 메모 추가 (클릭 후 PDF를 클릭)"
+            >
+              <StickyNoteIcon size={14} />
+            </button>
+          </>
+        )}
       </div>
 
-      <StickyNoteLayer documentId={documentId} pdfContainer={pdfContainer} />
+      <StickyNoteLayer
+        documentId={documentId}
+        pdfContainer={pdfContainer}
+        readOnly={readOnly}
+        shareToken={shareToken}
+      />
       <PdfLoader workerSrc={WORKER_SRC} url={url} beforeLoad={<Spinner />}>
         {(pdfDocument) => (
           <>
@@ -452,23 +466,23 @@ export default function PdfViewer({
                   });
                 }
               }}
-              onSelectionFinished={(position, content, hideTipAndSelection) => {
+              onSelectionFinished={readOnly ? () => null : (position, content, hideTipAndSelection) => {
                 const selectedText = content.text?.trim() ?? "";
 
                 return (
                   <HighlightTip
                     canTranslate={selectedText.length > 0}
                     onColorSelect={(color) => {
-                      onHighlightCreate({ position, content, comment: { text: "", emoji: "" } }, color);
+                      onHighlightCreate?.({ position, content, comment: { text: "", emoji: "" } }, color);
                       hideTipAndSelection();
                     }}
                     onAddToScheme={() => {
-                      onHighlightCreate({ position, content, comment: { text: "", emoji: "" } }, "yellow", true);
+                      onHighlightCreate?.({ position, content, comment: { text: "", emoji: "" } }, "yellow", true);
                       hideTipAndSelection();
                     }}
                     onTranslate={() => {
                       if (selectedText) {
-                        onTranslate({
+                        onTranslate?.({
                           kind: "selection",
                           text: selectedText,
                           position,
@@ -492,22 +506,22 @@ export default function PdfViewer({
               const highlightText = highlight.content.text?.trim() ?? "";
 
               const openEditTip = () => {
-                onHighlightClick(appHighlight as AppHighlight);
+                onHighlightClick?.(appHighlight as AppHighlight);
                 setTip(highlight, () => (
                   <HighlightEditTip
                     currentColor={color}
                     onColorChange={(newColor) => {
-                      onHighlightUpdate(highlight.id, newColor);
+                      onHighlightUpdate?.(highlight.id, newColor);
                       hideTip();
                     }}
                     onAddToScheme={() => {
-                      onHighlightAddToScheme(highlight.id);
+                      onHighlightAddToScheme?.(highlight.id);
                       hideTip();
                     }}
                     canTranslate={highlightText.length > 0}
                     onTranslate={() => {
                       if (highlightText) {
-                        onTranslate({
+                        onTranslate?.({
                           kind: "highlight",
                           text: highlightText,
                           highlightId: highlight.id,
@@ -516,7 +530,7 @@ export default function PdfViewer({
                       hideTip();
                     }}
                     onDelete={() => {
-                      onHighlightDelete(highlight.id);
+                      onHighlightDelete?.(highlight.id);
                       hideTip();
                     }}
                   />
@@ -554,7 +568,7 @@ export default function PdfViewer({
                   key={highlight.id}
                 >
                   <div
-                    onClick={openEditTip}
+                    onClick={readOnly ? undefined : openEditTip}
                     style={{
                       ["--highlight-color" as string]: style,
                     }}

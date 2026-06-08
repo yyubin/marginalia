@@ -4,16 +4,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { publicApi } from "@/lib/publicApi";
 import { useReaderStore } from "@/store/readerStore";
 import StickyNote from "./StickyNote";
-import type { StickyNote as StickyNoteType } from "@/types";
+import type { RenderableStickyNote, StickyNote as StickyNoteType } from "@/types";
 
 interface Props {
   documentId: string;
   pdfContainer: HTMLElement | null;
+  // Read-only mode (public share page): notes are fetched via the public API by
+  // share token, and all create/edit/drag/resize/delete affordances are off.
+  readOnly?: boolean;
+  shareToken?: string;
 }
 
-export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
+export default function StickyNoteLayer({ documentId, pdfContainer, readOnly = false, shareToken }: Props) {
   const activeTool = useReaderStore((s) => s.activeTool);
   const queryClient = useQueryClient();
   const [pageElements, setPageElements] = useState<Map<number, HTMLElement>>(new Map());
@@ -32,11 +37,17 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
   const hostsRef = useRef<Map<HTMLElement, HTMLDivElement>>(new Map());
 
   // ── Fetch notes ────────────────────────────────────────────────────────────
-  const { data: notes = [] } = useQuery<StickyNoteType[]>({
+  const ownerQuery = useQuery<StickyNoteType[]>({
     queryKey: ["sticky-notes", documentId],
     queryFn: () => api.get(`/documents/${documentId}/sticky-notes`).then((r) => r.data),
-    enabled: !!documentId,
+    enabled: !readOnly && !!documentId,
   });
+  const sharedQuery = useQuery<RenderableStickyNote[]>({
+    queryKey: ["shared-sticky-notes", shareToken],
+    queryFn: () => publicApi.get(`/share/${shareToken}/sticky-notes`).then((r) => r.data),
+    enabled: readOnly && !!shareToken,
+  });
+  const notes: RenderableStickyNote[] = (readOnly ? sharedQuery.data : ownerQuery.data) ?? [];
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const createMutation = useMutation({
@@ -151,9 +162,11 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
     return () => observer.disconnect();
   }, [pdfContainer, refreshPages]);
 
+  const stickyToolActive = !readOnly && activeTool === "sticky-note";
+
   // ── Cursor style when in sticky-note mode ─────────────────────────────────
   useEffect(() => {
-    if (activeTool !== "sticky-note") return;
+    if (!stickyToolActive) return;
     pageElements.forEach((el) => {
       el.style.cursor = "crosshair";
     });
@@ -162,7 +175,7 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
         el.style.cursor = "";
       });
     };
-  }, [activeTool, pageElements]);
+  }, [stickyToolActive, pageElements]);
 
   // ── Create note on page click ──────────────────────────────────────────────
   function handlePageClick(
@@ -170,7 +183,7 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
     pageEl: HTMLElement,
     pageNum: number
   ) {
-    if (activeTool !== "sticky-note") return;
+    if (!stickyToolActive) return;
     if ((e.target as HTMLElement).closest("[data-sticky-note]")) return;
     const rect = pageEl.getBoundingClientRect();
     const x = Math.max(0, Math.min(80, ((e.clientX - rect.left) / rect.width) * 100));
@@ -179,7 +192,7 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
   }
 
   // ── Group notes by page ────────────────────────────────────────────────────
-  const notesByPage = new Map<number, StickyNoteType[]>();
+  const notesByPage = new Map<number, RenderableStickyNote[]>();
   notes.forEach((note) => {
     const arr = notesByPage.get(note.page) ?? [];
     arr.push(note);
@@ -196,7 +209,7 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
         return createPortal(
           <>
             {/* Transparent click overlay — only shown in sticky-note mode */}
-            {activeTool === "sticky-note" && (
+            {stickyToolActive && (
               <div
                 className="absolute inset-0 pointer-events-auto"
                 style={{ zIndex: 9 }}
@@ -209,12 +222,13 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
                 key={note.id}
                 note={note}
                 pageEl={pageEl}
-                autoFocus={note.id === newNoteId}
-                onUpdate={(data) => {
+                readOnly={readOnly}
+                autoFocus={!readOnly && note.id === newNoteId}
+                onUpdate={readOnly ? undefined : (data) => {
                   if (note.id === newNoteId) setNewNoteId(null);
                   updateMutation.mutate({ id: note.id, ...data });
                 }}
-                onDelete={() => deleteMutation.mutate(note.id)}
+                onDelete={readOnly ? undefined : () => deleteMutation.mutate(note.id)}
               />
             ))}
           </>,

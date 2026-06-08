@@ -177,3 +177,27 @@ export interface StickyNote {
   created_at: string;
   updated_at: string;
 }
+
+// Fields a StickyNote needs purely to render (shared/read-only view). The owner
+// StickyNote satisfies this too, so components can accept the narrower shape.
+export type RenderableStickyNote = Pick<
+  StickyNote,
+  "id" | "page" | "x" | "y" | "width" | "content" | "color"
+>;
+
+// ── Read-only sharing ────────────────────────────────────────────────────────
+export interface SharedDocumentMeta {
+  title: string;
+  page_count: number | null;
+}
+
+export interface ShareInfo {
+  document_id: string;
+  title: string;
+  token: string;
+  share_url: string;
+  is_enabled: boolean;
+  view_count: number;
+  last_viewed_at: string | null;
+  created_at: string;
+}

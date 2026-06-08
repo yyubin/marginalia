@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { StickyNote as StickyNoteType, StickyNoteColor } from "@/types";
+import type { RenderableStickyNote, StickyNoteColor } from "@/types";
 
 const COLOR_STYLES: Record<StickyNoteColor, { bg: string; header: string; border: string }> = {
   yellow: { bg: "bg-yellow-50",  header: "bg-yellow-200",  border: "border-yellow-300" },
@@ -20,14 +20,15 @@ const COLOR_DOT: Record<StickyNoteColor, string> = {
 const COLORS: StickyNoteColor[] = ["yellow", "green", "blue", "pink"];
 
 interface Props {
-  note: StickyNoteType;
+  note: RenderableStickyNote;
   pageEl: HTMLElement;
   autoFocus?: boolean;
-  onUpdate: (data: Partial<Pick<StickyNoteType, "x" | "y" | "width" | "content" | "color">>) => void;
-  onDelete: () => void;
+  readOnly?: boolean;
+  onUpdate?: (data: Partial<Pick<RenderableStickyNote, "x" | "y" | "width" | "content" | "color">>) => void;
+  onDelete?: () => void;
 }
 
-export default function StickyNote({ note, pageEl, autoFocus, onUpdate, onDelete }: Props) {
+export default function StickyNote({ note, pageEl, autoFocus, readOnly = false, onUpdate, onDelete }: Props) {
   const [editing, setEditing] = useState(autoFocus ?? false);
   const [content, setContent] = useState(note.content);
   const [dragging, setDragging] = useState(false);
@@ -50,18 +51,18 @@ export default function StickyNote({ note, pageEl, autoFocus, onUpdate, onDelete
   function handleContentChange(value: string) {
     setContent(value);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => onUpdate({ content: value }), 600);
+    saveTimerRef.current = setTimeout(() => onUpdate?.({ content: value }), 600);
   }
 
   function handleBlur() {
     setEditing(false);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    onUpdate({ content });
+    onUpdate?.({ content });
   }
 
   // ── Drag ───────────────────────────────────────────────────────────────────
   function handleDragStart(e: React.MouseEvent) {
-    if (editing) return;
+    if (editing || readOnly) return;
     e.preventDefault();
     e.stopPropagation();
     const startMouseX = e.clientX;
@@ -78,7 +79,7 @@ export default function StickyNote({ note, pageEl, autoFocus, onUpdate, onDelete
       const dy = e.clientY - startMouseY;
       const newX = Math.max(0, Math.min(100 - note.width, note.x + (dx / rect.width) * 100));
       const newY = Math.max(0, Math.min(96, note.y + (dy / rect.height) * 100));
-      onUpdate({ x: newX, y: newY });
+      onUpdate?.({ x: newX, y: newY });
       setDragOffset({ x: 0, y: 0 });
       setDragging(false);
       document.removeEventListener("mousemove", onMove);
@@ -91,6 +92,7 @@ export default function StickyNote({ note, pageEl, autoFocus, onUpdate, onDelete
 
   // ── Resize ─────────────────────────────────────────────────────────────────
   function handleResizeStart(e: React.MouseEvent) {
+    if (readOnly) return;
     e.preventDefault();
     e.stopPropagation();
     const startMouseX = e.clientX;
@@ -108,7 +110,7 @@ export default function StickyNote({ note, pageEl, autoFocus, onUpdate, onDelete
       const rect = pageEl.getBoundingClientRect();
       const dx = e.clientX - startMouseX;
       const newWidth = Math.max(15, Math.min(55, startWidth + (dx / rect.width) * 100));
-      onUpdate({ width: newWidth });
+      onUpdate?.({ width: newWidth });
       setResizeWidth(null);
       setResizing(false);
       document.removeEventListener("mousemove", onMove);
@@ -141,26 +143,28 @@ export default function StickyNote({ note, pageEl, autoFocus, onUpdate, onDelete
     >
       {/* Header — drag handle + color picker + delete */}
       <div
-        className={`flex items-center gap-1 px-1.5 py-0.5 rounded-t ${styles.header} cursor-grab active:cursor-grabbing shrink-0`}
-        onMouseDown={handleDragStart}
+        className={`flex items-center gap-1 px-1.5 py-0.5 rounded-t ${styles.header} shrink-0 ${
+          readOnly ? "" : "cursor-grab active:cursor-grabbing"
+        }`}
+        onMouseDown={readOnly ? undefined : handleDragStart}
       >
-        <span className="text-[9px] text-gray-500 mr-auto select-none">⠿⠿</span>
+        <span className="text-[9px] text-gray-500 mr-auto select-none">{readOnly ? "" : "⠿⠿"}</span>
 
         {/* Color picker dots — visible on hover */}
-        {(hovered || isActive) && (
+        {!readOnly && (hovered || isActive) && (
           <div className="flex gap-0.5" onMouseDown={(e) => e.stopPropagation()}>
             {COLORS.map((c) => (
               <button
                 key={c}
                 className={`w-2.5 h-2.5 rounded-full ${COLOR_DOT[c]} ring-1 ring-white ${note.color === c ? "ring-gray-500" : ""}`}
-                onClick={() => onUpdate({ color: c })}
+                onClick={() => onUpdate?.({ color: c })}
               />
             ))}
           </div>
         )}
 
         {/* Delete button */}
-        {(hovered || isActive) && (
+        {!readOnly && (hovered || isActive) && (
           <button
             className="ml-0.5 w-3.5 h-3.5 flex items-center justify-center rounded text-gray-500 hover:text-red-500 hover:bg-red-50 text-[10px] leading-none"
             onMouseDown={(e) => e.stopPropagation()}
@@ -173,10 +177,10 @@ export default function StickyNote({ note, pageEl, autoFocus, onUpdate, onDelete
 
       {/* Body */}
       <div
-        className="flex-1 px-2 py-1 cursor-text"
-        onClick={() => { setEditing(true); textareaRef.current?.focus(); }}
+        className={`flex-1 px-2 py-1 ${readOnly ? "cursor-default" : "cursor-text"}`}
+        onClick={readOnly ? undefined : () => { setEditing(true); textareaRef.current?.focus(); }}
       >
-        {editing ? (
+        {editing && !readOnly ? (
           <textarea
             ref={textareaRef}
             value={content}
@@ -189,21 +193,23 @@ export default function StickyNote({ note, pageEl, autoFocus, onUpdate, onDelete
           />
         ) : (
           <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap break-words min-h-[40px]">
-            {content || <span className="text-gray-300">메모를 입력하세요...</span>}
+            {content || (!readOnly && <span className="text-gray-300">메모를 입력하세요...</span>)}
           </p>
         )}
       </div>
 
       {/* Resize handle */}
-      <div
-        className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize"
-        onMouseDown={handleResizeStart}
-        style={{ touchAction: "none" }}
-      >
-        <svg width="8" height="8" viewBox="0 0 8 8" className="absolute bottom-0.5 right-0.5 text-gray-400">
-          <path d="M7 1L1 7M7 4L4 7M7 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-        </svg>
-      </div>
+      {!readOnly && (
+        <div
+          className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize"
+          onMouseDown={handleResizeStart}
+          style={{ touchAction: "none" }}
+        >
+          <svg width="8" height="8" viewBox="0 0 8 8" className="absolute bottom-0.5 right-0.5 text-gray-400">
+            <path d="M7 1L1 7M7 4L4 7M7 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+          </svg>
+        </div>
+      )}
     </div>
   );
 }

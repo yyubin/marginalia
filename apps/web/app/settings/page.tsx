@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Footer } from "@/components/ui/footer";
-import type { User, UserSettings } from "@/types";
+import type { Document, DocumentListResponse, ShareInfo, User, UserSettings } from "@/types";
 
 const LLM_PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic (Claude)",
@@ -141,6 +141,8 @@ function SettingsForm({
 
         <LLMKeysSection settings={settings} isLoading={isLoading} />
 
+        <ShareSection />
+
         {provider === "email" && <ChangePasswordSection />}
 
         <DeleteAccountSection />
@@ -269,6 +271,156 @@ function LLMKeysSection({ settings, isLoading }: { settings?: UserSettings; isLo
           ))}
         </select>
       </div>
+    </section>
+  );
+}
+
+function ShareSection() {
+  const queryClient = useQueryClient();
+  const [picked, setPicked] = useState<string>("");
+  const [copied, setCopied] = useState(false);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["share"] });
+
+  const { data: share, isLoading: shareLoading } = useQuery<ShareInfo | null>({
+    queryKey: ["share"],
+    queryFn: () => api.get("/settings/share").then((r) => r.data),
+  });
+
+  const { data: docList } = useQuery<DocumentListResponse>({
+    queryKey: ["documents-for-share"],
+    queryFn: () => api.get("/documents", { params: { limit: 100 } }).then((r) => r.data),
+  });
+  const documents: Document[] = docList?.items ?? [];
+
+  const selectValue = picked || share?.document_id || documents[0]?.id || "";
+
+  const upsertMutation = useMutation({
+    mutationFn: (documentId: string) => api.put("/settings/share", { document_id: documentId }),
+    onSuccess: invalidate,
+  });
+  const enableMutation = useMutation({
+    mutationFn: (isEnabled: boolean) => api.patch("/settings/share", { is_enabled: isEnabled }),
+    onSuccess: invalidate,
+  });
+  const rotateMutation = useMutation({
+    mutationFn: () => api.post("/settings/share/rotate"),
+    onSuccess: invalidate,
+  });
+  const deleteMutation = useMutation({
+    mutationFn: () => api.delete("/settings/share"),
+    onSuccess: invalidate,
+  });
+
+  const busy =
+    upsertMutation.isPending ||
+    enableMutation.isPending ||
+    rotateMutation.isPending ||
+    deleteMutation.isPending;
+
+  const copyLink = async () => {
+    if (!share?.share_url) return;
+    await navigator.clipboard.writeText(share.share_url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <section className="bg-white rounded-xl border p-6 space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold">읽기 전용 공유</h2>
+        <p className="text-xs text-gray-400 mt-1">
+          PDF 1개를 링크로 공유하면, 링크를 가진 누구나 로그인 없이 하이라이트·스티커 메모와 함께
+          읽기 전용으로 볼 수 있습니다. 현재 계정당 1개만 공유할 수 있습니다.
+        </p>
+      </div>
+
+      {documents.length === 0 ? (
+        <p className="text-xs text-gray-400">공유할 PDF가 없습니다. 먼저 문서를 업로드하세요.</p>
+      ) : (
+        <>
+          <div className="space-y-2">
+            <label className="text-sm text-gray-700">공유할 PDF</label>
+            <div className="flex items-center gap-2">
+              <select
+                value={selectValue}
+                onChange={(e) => setPicked(e.target.value)}
+                disabled={shareLoading || busy}
+                className="flex-1 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+              >
+                {documents.map((doc) => (
+                  <option key={doc.id} value={doc.id}>
+                    {doc.title}
+                  </option>
+                ))}
+              </select>
+              <Button
+                size="sm"
+                disabled={busy || !selectValue}
+                onClick={() => upsertMutation.mutate(selectValue)}
+              >
+                {share
+                  ? share.document_id === selectValue
+                    ? "공유 중"
+                    : "이 PDF로 변경"
+                  : "공유 켜기"}
+              </Button>
+            </div>
+          </div>
+
+          {share && (
+            <div className="space-y-3 pt-2 border-t">
+              <div className="space-y-1.5">
+                <label className="text-sm text-gray-700">공유 링크</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={share.share_url}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="flex-1 border rounded-lg px-3 py-1.5 text-xs font-mono text-gray-600 bg-gray-50 focus:outline-none"
+                  />
+                  <Button size="sm" variant="outline" onClick={copyLink}>
+                    {copied ? "복사됨" : "복사"}
+                  </Button>
+                </div>
+                {!share.is_enabled && (
+                  <p className="text-xs text-amber-500">현재 공유가 비활성화되어 링크가 동작하지 않습니다.</p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>조회수 {share.view_count}회</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => enableMutation.mutate(!share.is_enabled)}
+                    disabled={busy}
+                    className="text-gray-500 hover:text-black disabled:opacity-40"
+                  >
+                    {share.is_enabled ? "공유 끄기" : "공유 켜기"}
+                  </button>
+                  <span className="text-gray-200">|</span>
+                  <button
+                    onClick={() => rotateMutation.mutate()}
+                    disabled={busy}
+                    className="text-gray-500 hover:text-black disabled:opacity-40"
+                    title="기존 링크를 무효화하고 새 링크를 발급합니다"
+                  >
+                    링크 재발급
+                  </button>
+                  <span className="text-gray-200">|</span>
+                  <button
+                    onClick={() => deleteMutation.mutate()}
+                    disabled={busy}
+                    className="text-red-500 hover:text-red-600 disabled:opacity-40"
+                  >
+                    공유 삭제
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </section>
   );
 }
