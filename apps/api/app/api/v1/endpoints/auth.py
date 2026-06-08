@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 from urllib.parse import urlencode
 
@@ -5,6 +6,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from slowapi.util import get_remote_address
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -26,6 +28,7 @@ from app.core.security import (
     hash_token,
     verify_password,
 )
+from app.models.document import Document
 from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -39,6 +42,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
+from app.services.r2_service import delete_files
 from app.services.user_service import get_user_by_email, get_user_by_id
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -180,6 +184,37 @@ async def logout(
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account(
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    refresh_token: str | None = Cookie(default=None),
+):
+    # Collect R2 file keys before the user record is gone
+    result = await db.execute(
+        select(Document.file_key).where(Document.user_id == current_user.id)
+    )
+    file_keys = list(result.scalars().all())
+
+    # Blacklist refresh token so it can't be reused
+    if refresh_token:
+        ttl = get_token_remaining_ttl(refresh_token)
+        if ttl > 0:
+            await redis_set(f"token_blacklist:{hash_token(refresh_token)}", "1", ttl_seconds=ttl)
+
+    # Delete user — cascades to all related DB rows
+    await db.delete(current_user)
+    await db.commit()
+
+    # Delete R2 objects in a thread (boto3 is synchronous)
+    if file_keys:
+        await asyncio.to_thread(delete_files, file_keys)
+
+    _clear_auth_cookies(response)
+    return None
 
 
 @router.get("/google")

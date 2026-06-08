@@ -50,3 +50,15 @@ def upload_file(file_bytes: bytes, file_key: str, content_type: str = "applicati
 def delete_file(file_key: str) -> None:
     client = _get_client()
     client.delete_object(Bucket=settings.R2_BUCKET_NAME, Key=file_key)
+
+
+def delete_files(file_keys: list[str]) -> None:
+    if not file_keys:
+        return
+    client = _get_client()
+    # S3/R2 delete_objects accepts up to 1000 keys per call
+    for i in range(0, len(file_keys), 1000):
+        client.delete_objects(
+            Bucket=settings.R2_BUCKET_NAME,
+            Delete={"Objects": [{"Key": k} for k in file_keys[i : i + 1000]]},
+        )
