@@ -41,6 +41,7 @@ from app.schemas.auth import (
     SignupRequest,
     TokenResponse,
     UserResponse,
+    VerifyEmailRequest,
 )
 from app.services.r2_service import delete_files
 from app.services.user_service import get_user_by_email, get_user_by_id
@@ -318,30 +319,29 @@ async def google_oauth_callback(
 
 # ── Email verification ────────────────────────────────────────────────────────
 
-@router.get("/verify-email")
+@router.post("/verify-email", status_code=status.HTTP_200_OK)
 @limiter.limit("10/hour", key_func=get_remote_address)
 async def verify_email(
     request: Request,
-    token: str,
+    body: VerifyEmailRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    frontend = settings.FRONTEND_URL
-    user_id = await redis_get(f"email_verify:{token}")
+    user_id = await redis_get(f"email_verify:{body.token}")
     if not user_id:
-        return RedirectResponse(f"{frontend}/login?error=invalid_token")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효하지 않거나 만료된 토큰입니다")
 
     user = await get_user_by_id(db, user_id)
     if not user:
-        return RedirectResponse(f"{frontend}/login?error=invalid_token")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효하지 않거나 만료된 토큰입니다")
 
     user.is_verified = True
-    await redis_delete(f"email_verify:{token}")
+    await redis_delete(f"email_verify:{body.token}")
     await db.commit()
 
     background_tasks.add_task(send_welcome_email, user.email, user.name)
 
-    return RedirectResponse(f"{frontend}/login?verified=true")
+    return {"message": "이메일 인증이 완료되었습니다"}
 
 
 @router.post("/resend-verification", status_code=status.HTTP_204_NO_CONTENT)

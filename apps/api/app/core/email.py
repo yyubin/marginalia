@@ -48,7 +48,7 @@ async def send_email(to: str, subject: str, html: str) -> None:
 
 
 async def send_verification_email(to: str, token: str, name: str | None = None) -> None:
-    url = f"{settings.API_BASE_URL}/api/v1/auth/verify-email?token={token}"
+    url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
     html = _render("verify_email.html", {"name": name, "verification_url": url})
     await send_email(to, "Marginalia 이메일 인증", html)
 

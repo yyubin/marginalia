@@ -56,9 +56,6 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     EMAIL_FROM_NAME: str = "Marginalia"
 
-    # Application base URL (used in email links)
-    API_BASE_URL: str = "http://localhost:8000"
-
     # Cookie settings
     COOKIE_SECURE: bool = False       # True in production (HTTPS only)
     COOKIE_SAMESITE: str = "lax"      # "none" when API and frontend are on different domains
@@ -69,6 +66,10 @@ class Settings(BaseSettings):
     PASSWORD_REQUIRE_LETTER: bool = True
     PASSWORD_REQUIRE_DIGIT: bool = True
 
+    # Monitoring (GlitchTip / Sentry)
+    SENTRY_DSN: str = ""
+    ENVIRONMENT: str = "development"
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.01
 
 
 settings = Settings()
