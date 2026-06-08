@@ -3,6 +3,9 @@ node_modules/
 .pnp
 .pnp.js
 
+# Root-level lock file (workspace packages manage their own)
+/package-lock.json
+
 # Next.js
 apps/web/.next/
 apps/web/out/
