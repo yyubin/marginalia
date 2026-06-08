@@ -81,6 +81,17 @@ def _clear_auth_cookies(response: Response) -> None:
     response.delete_cookie(key="access_token", path="/", **kw)
     response.delete_cookie(key="refresh_token", path="/api/v1/auth", **kw)
 
+
+def _oauth_state_cookie_kwargs() -> dict:
+    return dict(
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN or None,
+        path="/api/v1/auth",
+    )
+
+
 _GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
@@ -236,8 +247,7 @@ async def google_oauth_start(request: Request, response: Response):
         key="oauth_state",
         value=state,
         max_age=600,
-        httponly=True,
-        samesite="lax",
+        **_oauth_state_cookie_kwargs(),
     )
     return redirect
 
@@ -313,7 +323,7 @@ async def google_oauth_callback(
     refresh_token = create_refresh_token(str(user.id))
 
     redirect = RedirectResponse(f"{frontend}/callback")
-    redirect.delete_cookie("oauth_state")
+    redirect.delete_cookie("oauth_state", **_oauth_state_cookie_kwargs())
     _set_auth_cookies(redirect, access_token, refresh_token)
     return redirect
 

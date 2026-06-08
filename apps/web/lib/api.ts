@@ -1,4 +1,7 @@
 import axios from "axios";
+import type { AxiosError, InternalAxiosRequestConfig } from "axios";
+
+type RetryableRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
 export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
@@ -9,15 +12,27 @@ export const api = axios.create({
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
-    if (error.response?.status === 401 && typeof window !== "undefined") {
+    const axiosError = error as AxiosError;
+    const originalRequest = axiosError.config as RetryableRequestConfig | undefined;
+    const requestUrl = originalRequest?.url ?? "";
+    const isRefreshRequest = requestUrl.includes("/auth/refresh");
+
+    if (
+      axiosError.response?.status === 401 &&
+      typeof window !== "undefined" &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !isRefreshRequest
+    ) {
+      originalRequest._retry = true;
       try {
         // Refresh token cookie is sent automatically via withCredentials
         await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
-          {},
+          null,
           { withCredentials: true }
         );
-        return axios({ ...error.config, withCredentials: true });
+        return api.request(originalRequest);
       } catch {
         localStorage.clear();
         window.location.href = "/login";

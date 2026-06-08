@@ -109,6 +109,18 @@ class TestRefresh:
         assert "access_token" in data
         assert "refresh_token" in data
 
+    async def test_refresh_token_cookie_with_empty_body_returns_new_tokens(self, client, user):
+        token = create_refresh_token(str(user.id))
+        response = await client.post(
+            "/api/v1/auth/refresh",
+            json={},
+            cookies={"refresh_token": token},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert "refresh_token" in data
+
     async def test_invalid_token_returns_401(self, client):
         response = await client.post("/api/v1/auth/refresh", json={"refresh_token": "not.a.valid.token"})
         assert response.status_code == 401

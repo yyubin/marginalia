@@ -30,6 +30,7 @@ if settings.SENTRY_DSN:
         environment=settings.ENVIRONMENT,
         traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
         auto_session_tracking=False,
+        enable_logs=True,
         integrations=[
             StarletteIntegration(),
             FastApiIntegration(),
