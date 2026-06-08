@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
     notes,
     search,
     settings,
+    share,
     sticky_notes,
     translate,
 )
@@ -26,3 +27,4 @@ router.include_router(settings.router)
 router.include_router(bookmarks.router)
 router.include_router(search.router)
 router.include_router(sticky_notes.router)
+router.include_router(share.router)

@@ -5,6 +5,7 @@ from app.models.note import Note
 from app.models.collection import Collection, CollectionItem
 from app.models.user_settings import UserSettings
 from app.models.user_llm_key import UserLLMKey
+from app.models.document_share import DocumentShare
 
 __all__ = [
     "User",
@@ -15,4 +16,5 @@ __all__ = [
     "CollectionItem",
     "UserSettings",
     "UserLLMKey",
+    "DocumentShare",
 ]

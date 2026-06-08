@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # Public web origin used to build shareable links (e.g. https://app.example.com)
+    WEB_BASE_URL: str = "http://localhost:3000"
+
     # Anthropic
     ANTHROPIC_API_KEY: str = ""
 

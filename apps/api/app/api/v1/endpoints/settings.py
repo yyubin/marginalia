@@ -7,9 +7,12 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.rate_limit import limiter
 from app.core.redis_client import redis_delete, redis_get, redis_set
+from app.models.document import Document
+from app.models.document_share import DocumentShare
 from app.models.user import User
 from app.models.user_llm_key import UserLLMKey
 from app.models.user_settings import UserSettings
+from app.schemas.share import ShareCreateRequest, ShareEnableRequest, ShareInfo
 from app.schemas.user_settings import (
     DefaultLLMProviderUpdate,
     LLMKeyInfo,
@@ -18,6 +21,11 @@ from app.schemas.user_settings import (
     UserSettingsUpdate,
 )
 from app.services.llm_providers import SUPPORTED_PROVIDERS, get_provider
+from app.services.share_service import (
+    build_share_url,
+    generate_share_token,
+    invalidate_share_url_cache,
+)
 
 router = APIRouter(tags=["settings"])
 
@@ -171,3 +179,116 @@ async def delete_llm_key(
     await db.delete(key_row)
     await db.commit()
     await _invalidate_settings_cache(current_user.id)
+
+
+# ── Read-only document sharing ───────────────────────────────────────────────
+async def _get_share_with_doc(db: AsyncSession, user_id) -> tuple[DocumentShare, Document] | None:
+    share = await db.scalar(select(DocumentShare).where(DocumentShare.user_id == user_id))
+    if not share:
+        return None
+    doc = await db.get(Document, share.document_id)
+    if not doc:
+        return None
+    return share, doc
+
+
+def _share_info(share: DocumentShare, doc: Document) -> ShareInfo:
+    return ShareInfo(
+        document_id=doc.id,
+        title=doc.title,
+        token=share.token,
+        share_url=build_share_url(share.token),
+        is_enabled=share.is_enabled,
+        view_count=share.view_count,
+        last_viewed_at=share.last_viewed_at,
+        created_at=share.created_at,
+    )
+
+
+@router.get("/settings/share", response_model=ShareInfo | None)
+async def get_share(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await _get_share_with_doc(db, current_user.id)
+    if not result:
+        return None
+    return _share_info(*result)
+
+
+@router.put("/settings/share", response_model=ShareInfo)
+async def upsert_share(
+    body: ShareCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    doc = await db.scalar(
+        select(Document).where(Document.id == body.document_id, Document.user_id == current_user.id)
+    )
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # One share per user: reuse the existing row, just retargeting its document.
+    share = await db.scalar(select(DocumentShare).where(DocumentShare.user_id == current_user.id))
+    if share:
+        if share.document_id != doc.id:
+            await invalidate_share_url_cache(share.token)
+            share.document_id = doc.id
+        share.is_enabled = True
+    else:
+        share = DocumentShare(
+            user_id=current_user.id,
+            document_id=doc.id,
+            token=generate_share_token(),
+        )
+        db.add(share)
+    await db.commit()
+    await db.refresh(share)
+    return _share_info(share, doc)
+
+
+@router.post("/settings/share/rotate", response_model=ShareInfo)
+async def rotate_share_token(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await _get_share_with_doc(db, current_user.id)
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="공유가 없습니다")
+    share, doc = result
+    await invalidate_share_url_cache(share.token)
+    share.token = generate_share_token()
+    await db.commit()
+    await db.refresh(share)
+    return _share_info(share, doc)
+
+
+@router.patch("/settings/share", response_model=ShareInfo)
+async def set_share_enabled(
+    body: ShareEnableRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await _get_share_with_doc(db, current_user.id)
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="공유가 없습니다")
+    share, doc = result
+    if not body.is_enabled:
+        await invalidate_share_url_cache(share.token)
+    share.is_enabled = body.is_enabled
+    await db.commit()
+    await db.refresh(share)
+    return _share_info(share, doc)
+
+
+@router.delete("/settings/share", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_share(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    share = await db.scalar(select(DocumentShare).where(DocumentShare.user_id == current_user.id))
+    if not share:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="공유가 없습니다")
+    await invalidate_share_url_cache(share.token)
+    await db.delete(share)
+    await db.commit()
