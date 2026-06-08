@@ -3,6 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import cast, Integer, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
@@ -26,6 +27,7 @@ async def list_highlights(
     page_col = cast(Highlight.position["pageNumber"].astext, Integer)
     result = await db.execute(
         select(Highlight)
+        .options(selectinload(Highlight.note))
         .where(
             Highlight.document_id == doc_id,
             Highlight.user_id == current_user.id,
@@ -57,8 +59,10 @@ async def create_highlight(
     )
     db.add(highlight)
     await db.commit()
-    await db.refresh(highlight)
-    return highlight
+    result = await db.execute(
+        select(Highlight).options(selectinload(Highlight.note)).where(Highlight.id == highlight.id)
+    )
+    return result.scalar_one()
 
 
 @router.patch("/highlights/{highlight_id}", response_model=HighlightResponse)
@@ -73,8 +77,10 @@ async def update_highlight_color(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid color")
     highlight.color = body.color
     await db.commit()
-    await db.refresh(highlight)
-    return highlight
+    result = await db.execute(
+        select(Highlight).options(selectinload(Highlight.note)).where(Highlight.id == highlight.id)
+    )
+    return result.scalar_one()
 
 
 @router.delete("/highlights/{highlight_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -96,7 +102,7 @@ async def _assert_doc_owner(db: AsyncSession, doc_id: uuid.UUID, user_id: uuid.U
 
 async def _get_owned_highlight(db: AsyncSession, highlight_id: uuid.UUID, user_id: uuid.UUID) -> Highlight:
     result = await db.execute(
-        select(Highlight).where(Highlight.id == highlight_id, Highlight.user_id == user_id)
+        select(Highlight).options(selectinload(Highlight.note)).where(Highlight.id == highlight_id, Highlight.user_id == user_id)
     )
     h = result.scalar_one_or_none()
     if not h:
