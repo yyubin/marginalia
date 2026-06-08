@@ -49,12 +49,9 @@ class Settings(BaseSettings):
     # Rate limiting
     RATE_LIMIT_ENABLED: bool = True
 
-    # SMTP (email)
-    SMTP_HOST: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASSWORD: str = ""
-    EMAIL_FROM_NAME: str = "Marginalia"
+    # Email (Resend)
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = "Marginalia <onboarding@resend.dev>"
 
     # Cookie settings
     COOKIE_SECURE: bool = False       # True in production (HTTPS only)
