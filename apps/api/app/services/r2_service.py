@@ -1,3 +1,5 @@
+import asyncio
+
 import boto3
 from botocore.config import Config
 
@@ -50,6 +52,14 @@ def upload_file(file_bytes: bytes, file_key: str, content_type: str = "applicati
 def delete_file(file_key: str) -> None:
     client = _get_client()
     client.delete_object(Bucket=settings.R2_BUCKET_NAME, Key=file_key)
+
+
+async def upload_file_async(file_bytes: bytes, file_key: str, content_type: str = "application/pdf") -> None:
+    await asyncio.to_thread(upload_file, file_bytes, file_key, content_type)
+
+
+async def delete_file_async(file_key: str) -> None:
+    await asyncio.to_thread(delete_file, file_key)
 
 
 def delete_files(file_keys: list[str]) -> None:

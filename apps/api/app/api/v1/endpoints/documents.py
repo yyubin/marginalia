@@ -15,7 +15,7 @@ from app.models.user import User
 from app.models.user_settings import UserSettings
 from app.schemas.document import DocumentListResponse, DocumentResponse, DocumentUrlResponse
 from app.core.redis_client import redis_delete, redis_get, redis_set
-from app.services.r2_service import delete_file, generate_presigned_url, upload_file
+from app.services.r2_service import delete_file_async, generate_presigned_url, upload_file_async
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -101,7 +101,7 @@ async def upload_document(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효하지 않은 PDF 파일입니다")
 
     file_key = f"{current_user.id}/{uuid.uuid4()}.pdf"
-    upload_file(file_bytes, file_key)
+    await upload_file_async(file_bytes, file_key)
 
     doc = Document(
         user_id=current_user.id,
@@ -133,7 +133,7 @@ async def delete_document(
 ):
     doc = await _get_owned_doc(db, doc_id, current_user.id)
     await redis_delete(_presigned_cache_key(doc_id))
-    delete_file(doc.file_key)
+    await delete_file_async(doc.file_key)
     await db.delete(doc)
     await db.commit()
 
