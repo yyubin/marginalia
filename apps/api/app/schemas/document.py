@@ -16,6 +16,12 @@ class DocumentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DocumentListResponse(BaseModel):
+    items: list[DocumentResponse]
+    next_cursor: str | None
+    has_more: bool
+
+
 class DocumentUrlResponse(BaseModel):
     url: str
     expires_in: int

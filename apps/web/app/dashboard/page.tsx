@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { Document, User, UserSettings } from "@/types";
+import type { Document, DocumentListResponse, User, UserSettings } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Footer } from "@/components/ui/footer";
 
@@ -13,10 +13,23 @@ export default function DashboardPage() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: documents, isLoading } = useQuery<Document[]>({
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+  } = useInfiniteQuery<DocumentListResponse>({
     queryKey: ["documents"],
-    queryFn: () => api.get("/documents").then((r) => r.data),
+    queryFn: ({ pageParam }) =>
+      api
+        .get("/documents", { params: { limit: 20, cursor: pageParam ?? undefined } })
+        .then((r) => r.data),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    initialPageParam: undefined,
   });
+
+  const documents = data?.pages.flatMap((p) => p.items);
 
   const { data: me } = useQuery<User>({
     queryKey: ["me"],
@@ -145,6 +158,18 @@ export default function DashboardPage() {
             </div>
           ))}
         </div>
+
+        {hasNextPage && (
+          <div className="mt-6 flex justify-center">
+            <Button
+              variant="outline"
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+            >
+              {isFetchingNextPage ? "불러오는 중..." : "더 보기"}
+            </Button>
+          </div>
+        )}
       </main>
 
       <Footer />

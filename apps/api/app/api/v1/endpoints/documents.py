@@ -1,8 +1,9 @@
+import base64
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -12,21 +13,51 @@ from app.core.rate_limit import limiter
 from app.models.document import Document
 from app.models.user import User
 from app.models.user_settings import UserSettings
-from app.schemas.document import DocumentResponse, DocumentUrlResponse
+from app.schemas.document import DocumentListResponse, DocumentResponse, DocumentUrlResponse
 from app.services.r2_service import delete_file, generate_presigned_url, upload_file
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-@router.get("", response_model=list[DocumentResponse])
+def _encode_cursor(created_at: datetime, doc_id: uuid.UUID) -> str:
+    raw = f"{created_at.isoformat()}:{doc_id}"
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode()).decode()
+        ts_str, id_str = raw.rsplit(":", 1)
+        return datetime.fromisoformat(ts_str), uuid.UUID(id_str)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor")
+
+
+@router.get("", response_model=DocumentListResponse)
 async def list_documents(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    limit: int = Query(default=20, ge=1, le=100),
+    cursor: str | None = Query(default=None),
 ):
-    result = await db.execute(
-        select(Document).where(Document.user_id == current_user.id).order_by(Document.created_at.desc())
-    )
-    return result.scalars().all()
+    stmt = select(Document).where(Document.user_id == current_user.id)
+
+    if cursor:
+        cursor_ts, cursor_id = _decode_cursor(cursor)
+        stmt = stmt.where(
+            tuple_(Document.created_at, Document.id) < (cursor_ts, cursor_id)
+        )
+
+    stmt = stmt.order_by(Document.created_at.desc(), Document.id.desc()).limit(limit + 1)
+    result = await db.execute(stmt)
+    rows = list(result.scalars().all())
+
+    has_more = len(rows) > limit
+    items = rows[:limit]
+
+    next_cursor = _encode_cursor(items[-1].created_at, items[-1].id) if has_more else None
+
+    return DocumentListResponse(items=items, next_cursor=next_cursor, has_more=has_more)
 
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)

@@ -50,6 +50,12 @@ export interface Document {
   created_at: string;
 }
 
+export interface DocumentListResponse {
+  items: Document[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
 export interface CollectionItem {
   id: string;
   highlight_id: string;
