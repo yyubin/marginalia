@@ -145,10 +145,8 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      {(() => { console.log(`[STICKY-DEBUG] render: pageElements.size=${pageElements.size}, activeTool=${activeTool}, first entry connected=${pageElements.size > 0 ? [...pageElements.values()][0].isConnected : 'n/a'}`); return null; })()}
       {Array.from(pageElements.entries()).map(([pageNum, pageEl]) => {
         const pageNotes = notesByPage.get(pageNum) ?? [];
-        console.log(`[STICKY-DEBUG] portal for page ${pageNum}: pageEl.isConnected=${pageEl.isConnected}, tag=${pageEl.tagName}`);
         return createPortal(
           <div data-sticky-layer="" className="contents">
             {/* Transparent click overlay — only shown in sticky-note mode */}
@@ -174,7 +172,7 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
               />
             ))}
           </div>,
-          pageNum === 1 ? document.body : pageEl,
+          pageEl,
           `sticky-${pageNum}`
         );
       })}

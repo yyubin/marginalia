@@ -33,6 +33,7 @@ export default function StickyNote({ note, pageEl, autoFocus, onUpdate, onDelete
   const [dragging, setDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [resizing, setResizing] = useState(false);
+  const [resizeWidth, setResizeWidth] = useState<number | null>(null);
   const [hovered, setHovered] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -100,10 +101,15 @@ export default function StickyNote({ note, pageEl, autoFocus, onUpdate, onDelete
       const rect = pageEl.getBoundingClientRect();
       const dx = e.clientX - startMouseX;
       const newWidth = Math.max(15, Math.min(55, startWidth + (dx / rect.width) * 100));
-      onUpdate({ width: newWidth });
+      setResizeWidth(newWidth);
     }
 
-    function onUp() {
+    function onUp(e: MouseEvent) {
+      const rect = pageEl.getBoundingClientRect();
+      const dx = e.clientX - startMouseX;
+      const newWidth = Math.max(15, Math.min(55, startWidth + (dx / rect.width) * 100));
+      onUpdate({ width: newWidth });
+      setResizeWidth(null);
       setResizing(false);
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
@@ -123,7 +129,7 @@ export default function StickyNote({ note, pageEl, autoFocus, onUpdate, onDelete
       style={{
         left: `${note.x}%`,
         top: `${note.y}%`,
-        width: `${note.width}%`,
+        width: `${resizeWidth ?? note.width}%`,
         minHeight: "6%",
         transform: dragging ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined,
         zIndex: isActive ? 100 : 50,
