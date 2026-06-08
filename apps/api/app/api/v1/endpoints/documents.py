@@ -1,13 +1,14 @@
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.rate_limit import limiter
 from app.models.document import Document
 from app.models.user import User
 from app.models.user_settings import UserSettings
@@ -29,7 +30,9 @@ async def list_documents(
 
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/hour")
 async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

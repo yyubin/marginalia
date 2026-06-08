@@ -6,9 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from slowapi.util import get_remote_address
+
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.rate_limit import limiter
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -28,7 +31,8 @@ _GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 
 @router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/hour", key_func=get_remote_address)
+async def signup(request: Request, body: SignupRequest, db: AsyncSession = Depends(get_db)):
     existing = await get_user_by_email(db, body.email)
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
@@ -50,7 +54,8 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute", key_func=get_remote_address)
+async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = await get_user_by_email(db, body.email)
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
@@ -62,7 +67,8 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("30/minute", key_func=get_remote_address)
+async def refresh(request: Request, body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     user_id = decode_token(body.refresh_token, expected_type="refresh")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
@@ -89,7 +95,8 @@ async def get_me(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/google")
-async def google_oauth_start():
+@limiter.limit("20/hour", key_func=get_remote_address)
+async def google_oauth_start(request: Request):
     state = secrets.token_urlsafe(32)
     params = urlencode({
         "client_id": settings.GOOGLE_CLIENT_ID,
@@ -112,6 +119,7 @@ async def google_oauth_start():
 
 
 @router.get("/google/callback")
+@limiter.limit("20/hour", key_func=get_remote_address)
 async def google_oauth_callback(
     request: Request,
     db: AsyncSession = Depends(get_db),

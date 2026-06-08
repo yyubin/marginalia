@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     MAX_DOCUMENTS_PER_USER: int = 3
     MAX_FILE_SIZE_MB: int = 50
 
+    # Rate limiting
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_STORAGE_URI: str = ""  # empty = in-memory; "redis://..." for Redis
+
 
 
 settings = Settings()

@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.core.security import create_access_token
 from app.main import app
 from app.models.bookmark import Bookmark
@@ -11,6 +12,14 @@ from app.models.document import Document
 from app.models.highlight import Highlight
 from app.models.note import Note
 from app.models.user import User
+
+
+@pytest.fixture(autouse=True)
+def disable_rate_limiting():
+    original = limiter._enabled
+    limiter._enabled = False
+    yield
+    limiter._enabled = original
 
 
 @pytest.fixture

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto import encrypt_secret, mask_key
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.rate_limit import limiter
 from app.models.user import User
 from app.models.user_llm_key import UserLLMKey
 from app.models.user_settings import UserSettings
@@ -97,7 +98,9 @@ async def update_default_llm_provider(
 
 
 @router.put("/settings/llm-keys/{provider}", response_model=LLMKeyInfo)
+@limiter.limit("5/minute")
 async def upsert_llm_key(
+    request: Request,
     provider: str,
     body: LLMKeyUpsertRequest,
     db: AsyncSession = Depends(get_db),
