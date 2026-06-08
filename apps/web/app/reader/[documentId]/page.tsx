@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PanelLeft, PanelRight } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
@@ -37,6 +38,45 @@ export default function ReaderPage() {
   const loadedUntilPageRef = useRef(0); // 마지막으로 로드한 PDF 페이지 번호
   const isLoadingMoreRef = useRef(false);
   const pageRestoredRef = useRef(false);
+
+  const [panelSide, setPanelSide] = useState<"left" | "right">(() => {
+    if (typeof window === "undefined") return "right";
+    return (localStorage.getItem("reader_panel_side") as "left" | "right") ?? "right";
+  });
+  const [panelWidth, setPanelWidth] = useState(() => {
+    if (typeof window === "undefined") return 320;
+    return Number(localStorage.getItem("reader_panel_width")) || 320;
+  });
+  const panelWidthRef = useRef(panelWidth);
+
+  useEffect(() => { panelWidthRef.current = panelWidth; }, [panelWidth]);
+  useEffect(() => { localStorage.setItem("reader_panel_width", String(panelWidth)); }, [panelWidth]);
+
+  const togglePanelSide = useCallback(() => {
+    setPanelSide((s) => {
+      const next = s === "right" ? "left" : "right";
+      localStorage.setItem("reader_panel_side", next);
+      return next;
+    });
+  }, []);
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panelWidthRef.current;
+    const side = panelSide;
+
+    const onMove = (e: MouseEvent) => {
+      const delta = side === "right" ? startX - e.clientX : e.clientX - startX;
+      setPanelWidth(Math.max(240, Math.min(600, startWidth + delta)));
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [panelSide]);
 
   useEffect(() => {
     if (!localStorage.getItem("access_token")) router.push("/login");
@@ -207,9 +247,43 @@ export default function ReaderPage() {
           ← 대시보드
         </button>
         <h1 className="text-sm font-semibold truncate flex-1">{docTitle}</h1>
+        <button
+          onClick={togglePanelSide}
+          className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+          title={panelSide === "right" ? "패널을 왼쪽으로" : "패널을 오른쪽으로"}
+        >
+          {panelSide === "right" ? <PanelLeft size={16} /> : <PanelRight size={16} />}
+        </button>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
+        {panelSide === "left" && (
+          <div
+            className="flex flex-col border-r bg-white overflow-hidden shrink-0"
+            style={{ width: panelWidth }}
+          >
+            <SidePanel
+              documentId={documentId}
+              translateTarget={translateTarget}
+              bottomTab={bottomTab}
+              setBottomTab={setBottomTab}
+              setTranslateTarget={setTranslateTarget}
+              addHighlight={addHighlight}
+              selectHighlight={selectHighlight}
+              handleHighlightNavigate={handleHighlightNavigate}
+              handleBookmarkNavigate={handleBookmarkNavigate}
+              currentPage={currentPage}
+            />
+          </div>
+        )}
+
+        {panelSide === "left" && (
+          <div
+            onMouseDown={startResize}
+            className="w-1 hover:w-1.5 bg-transparent hover:bg-blue-400 cursor-col-resize shrink-0 transition-all"
+          />
+        )}
+
         {pdfUrl ? (
           <PdfViewer
             url={pdfUrl}
@@ -231,57 +305,112 @@ export default function ReaderPage() {
           </div>
         )}
 
-        <div className="w-80 flex flex-col border-l bg-white overflow-hidden shrink-0">
-          <SchemePanel documentId={documentId} onHighlightClick={handleHighlightNavigate} />
-          {translateTarget ? (
-            <TranslatePanel
-              target={translateTarget}
-              onClose={() => setTranslateTarget(null)}
-              onHighlightSaved={(highlight) => {
-                const appHighlight = { ...(highlight as AppHighlight), comment: { text: "", emoji: "" } };
-                addHighlight(appHighlight);
-                selectHighlight(appHighlight);
-                setBottomTab("notes");
-              }}
+        {panelSide === "right" && (
+          <div
+            onMouseDown={startResize}
+            className="w-1 hover:w-1.5 bg-transparent hover:bg-blue-400 cursor-col-resize shrink-0 transition-all"
+          />
+        )}
+
+        {panelSide === "right" && (
+          <div
+            className="flex flex-col border-l bg-white overflow-hidden shrink-0"
+            style={{ width: panelWidth }}
+          >
+            <SidePanel
               documentId={documentId}
+              translateTarget={translateTarget}
+              bottomTab={bottomTab}
+              setBottomTab={setBottomTab}
+              setTranslateTarget={setTranslateTarget}
+              addHighlight={addHighlight}
+              selectHighlight={selectHighlight}
+              handleHighlightNavigate={handleHighlightNavigate}
+              handleBookmarkNavigate={handleBookmarkNavigate}
+              currentPage={currentPage}
             />
-          ) : (
-            <div className="flex flex-col flex-1 overflow-hidden">
-              <div className="flex border-b shrink-0">
-                <button
-                  onClick={() => setBottomTab("notes")}
-                  className={`flex-1 py-2 text-xs font-medium transition-colors ${
-                    bottomTab === "notes"
-                      ? "text-black border-b-2 border-black"
-                      : "text-gray-400 hover:text-gray-600"
-                  }`}
-                >
-                  메모
-                </button>
-                <button
-                  onClick={() => setBottomTab("bookmarks")}
-                  className={`flex-1 py-2 text-xs font-medium transition-colors ${
-                    bottomTab === "bookmarks"
-                      ? "text-black border-b-2 border-black"
-                      : "text-gray-400 hover:text-gray-600"
-                  }`}
-                >
-                  북마크
-                </button>
-              </div>
-              {bottomTab === "notes" ? (
-                <NotesPanel documentId={documentId} onHighlightClick={handleHighlightNavigate} />
-              ) : (
-                <BookmarkPanel
-                  documentId={documentId}
-                  currentPage={currentPage}
-                  onNavigate={handleBookmarkNavigate}
-                />
-              )}
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+interface SidePanelProps {
+  documentId: string;
+  translateTarget: TranslateTarget | null;
+  bottomTab: "notes" | "bookmarks";
+  setBottomTab: (tab: "notes" | "bookmarks") => void;
+  setTranslateTarget: (t: TranslateTarget | null) => void;
+  addHighlight: (h: AppHighlight) => void;
+  selectHighlight: (h: AppHighlight) => void;
+  handleHighlightNavigate: (h: AppHighlight | StoredHighlight) => void;
+  handleBookmarkNavigate: (page: number) => void;
+  currentPage: number;
+}
+
+function SidePanel({
+  documentId,
+  translateTarget,
+  bottomTab,
+  setBottomTab,
+  setTranslateTarget,
+  addHighlight,
+  selectHighlight,
+  handleHighlightNavigate,
+  handleBookmarkNavigate,
+  currentPage,
+}: SidePanelProps) {
+  return (
+    <>
+      <SchemePanel documentId={documentId} onHighlightClick={handleHighlightNavigate} />
+      {translateTarget ? (
+        <TranslatePanel
+          target={translateTarget}
+          onClose={() => setTranslateTarget(null)}
+          onHighlightSaved={(highlight) => {
+            const appHighlight = { ...(highlight as AppHighlight), comment: { text: "", emoji: "" } };
+            addHighlight(appHighlight);
+            selectHighlight(appHighlight);
+            setBottomTab("notes");
+          }}
+          documentId={documentId}
+        />
+      ) : (
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex border-b shrink-0">
+            <button
+              onClick={() => setBottomTab("notes")}
+              className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                bottomTab === "notes"
+                  ? "text-black border-b-2 border-black"
+                  : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              메모
+            </button>
+            <button
+              onClick={() => setBottomTab("bookmarks")}
+              className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                bottomTab === "bookmarks"
+                  ? "text-black border-b-2 border-black"
+                  : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              북마크
+            </button>
+          </div>
+          {bottomTab === "notes" ? (
+            <NotesPanel documentId={documentId} onHighlightClick={handleHighlightNavigate} />
+          ) : (
+            <BookmarkPanel
+              documentId={documentId}
+              currentPage={currentPage}
+              onNavigate={handleBookmarkNavigate}
+            />
+          )}
+        </div>
+      )}
+    </>
   );
 }
