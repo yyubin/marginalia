@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_verified_user
 from app.core.rate_limit import limiter
 from app.models.user import User
 from app.schemas.translate import TranslateRequest
@@ -25,7 +25,7 @@ async def translate(
     request: Request,
     body: TranslateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_verified_user),
 ):
     if body.provider is not None and body.provider not in SUPPORTED_PROVIDERS:
         raise HTTPException(

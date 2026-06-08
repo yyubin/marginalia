@@ -43,9 +43,21 @@ class Settings(BaseSettings):
     MAX_DOCUMENTS_PER_USER: int = 3
     MAX_FILE_SIZE_MB: int = 50
 
+    # Redis (rate limiting + email tokens)
+    REDIS_URL: str = ""  # empty = in-memory fallback; "rediss://..." for Upstash
+
     # Rate limiting
     RATE_LIMIT_ENABLED: bool = True
-    RATE_LIMIT_STORAGE_URI: str = ""  # empty = in-memory; "redis://..." for Redis
+
+    # SMTP (email)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    EMAIL_FROM_NAME: str = "Marginalia"
+
+    # Application base URL (used in email links)
+    API_BASE_URL: str = "http://localhost:8000"
 
 
 

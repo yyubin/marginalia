@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -20,6 +22,36 @@ def disable_rate_limiting():
     limiter._enabled = False
     yield
     limiter._enabled = original
+
+
+@pytest.fixture(autouse=True)
+def mock_redis_store():
+    """In-memory Redis mock. Tests that inspect stored tokens can request this fixture."""
+    store: dict[str, str] = {}
+
+    async def fake_set(key: str, value: str, ttl_seconds: int) -> None:
+        store[key] = value
+
+    async def fake_get(key: str) -> str | None:
+        return store.get(key)
+
+    async def fake_delete(key: str) -> None:
+        store.pop(key, None)
+
+    async def fake_exists(key: str) -> bool:
+        return key in store
+
+    async def fake_send_email(*args, **kwargs) -> None:
+        pass
+
+    with (
+        patch("app.api.v1.endpoints.auth.redis_set", new=fake_set),
+        patch("app.api.v1.endpoints.auth.redis_get", new=fake_get),
+        patch("app.api.v1.endpoints.auth.redis_delete", new=fake_delete),
+        patch("app.api.v1.endpoints.auth.redis_exists", new=fake_exists),
+        patch("app.core.email.send_email", new=fake_send_email),
+    ):
+        yield store
 
 
 @pytest.fixture
@@ -52,7 +84,7 @@ async def client(db):
 
 @pytest.fixture
 async def user(db):
-    u = User(email="testuser@example.com", name="Test User", provider="google")
+    u = User(email="testuser@example.com", name="Test User", provider="google", is_verified=True)
     db.add(u)
     await db.flush()
     return u
@@ -66,7 +98,7 @@ async def auth_headers(user):
 
 @pytest.fixture
 async def other_user(db):
-    u = User(email="otheruser@example.com", name="Other User", provider="google")
+    u = User(email="otheruser@example.com", name="Other User", provider="google", is_verified=True)
     db.add(u)
     await db.flush()
     return u
@@ -80,7 +112,7 @@ async def other_auth_headers(other_user):
 
 @pytest.fixture
 async def admin_user(db):
-    u = User(email="admin@example.com", name="Admin User", provider="google", is_admin=True)
+    u = User(email="admin@example.com", name="Admin User", provider="google", is_admin=True, is_verified=True)
     db.add(u)
     await db.flush()
     return u

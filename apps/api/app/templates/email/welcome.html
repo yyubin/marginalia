@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}환영합니다 — Marginalia{% endblock %}
+{% block content %}
+  <h1 style="margin:0 0 10px;font-size:21px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;line-height:1.3;">
+    Marginalia에 오신 걸 환영합니다
+  </h1>
+  <p style="margin:0 0 28px;font-size:15px;color:#8a8a8a;line-height:1.7;">
+    {% if name %}<span style="color:#d4d4d4;">{{ name }}</span>님,{% endif %}
+    가입해 주셔서 감사합니다.<br>
+    PDF를 업로드하고 하이라이트와 노트로 더 깊이 있는 읽기를 시작하세요.
+  </p>
+
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-bottom:32px;">
+    <tr>
+      <td style="border-radius:9px;background-color:#2563eb;">
+        <a href="{{ app_url }}"
+           style="display:inline-block;padding:14px 30px;font-size:15px;font-weight:600;
+                  color:#ffffff;text-decoration:none;letter-spacing:0.1px;
+                  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+          시작하기
+        </a>
+      </td>
+    </tr>
+  </table>
+
+  <hr style="border:none;border-top:1px solid #2c2c2e;margin:0 0 24px;">
+
+  <!-- Feature highlights -->
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+    <tr>
+      <td style="padding:14px 16px;background-color:#242426;border-radius:10px;">
+        <p style="margin:0;font-size:13px;color:#8a8a8a;line-height:1.6;
+                   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+          <span style="color:#93c5fd;font-weight:600;">PDF 업로드</span><br>
+          최대 50MB 파일을 저장하고 어디서든 열람하세요.
+        </p>
+      </td>
+    </tr>
+    <tr><td style="height:8px;"></td></tr>
+    <tr>
+      <td style="padding:14px 16px;background-color:#242426;border-radius:10px;">
+        <p style="margin:0;font-size:13px;color:#8a8a8a;line-height:1.6;
+                   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+          <span style="color:#93c5fd;font-weight:600;">하이라이트 &amp; 노트</span><br>
+          중요한 내용을 형광펜으로 표시하고 생각을 메모로 남기세요.
+        </p>
+      </td>
+    </tr>
+    <tr><td style="height:8px;"></td></tr>
+    <tr>
+      <td style="padding:14px 16px;background-color:#242426;border-radius:10px;">
+        <p style="margin:0;font-size:13px;color:#8a8a8a;line-height:1.6;
+                   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+          <span style="color:#93c5fd;font-weight:600;">AI 번역</span><br>
+          선택한 텍스트를 즉시 번역해 읽기 흐름을 유지하세요.
+        </p>
+      </td>
+    </tr>
+  </table>
+{% endblock %}

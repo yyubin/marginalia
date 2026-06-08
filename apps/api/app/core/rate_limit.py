@@ -21,9 +21,9 @@ limiter = Limiter(
     key_func=get_user_id_or_ip,
     default_limits=["120/minute"],
     headers_enabled=True,
-    storage_uri=settings.RATE_LIMIT_STORAGE_URI or "memory://",
+    storage_uri=settings.REDIS_URL or "memory://",
     enabled=settings.RATE_LIMIT_ENABLED,
-    in_memory_fallback_enabled=bool(settings.RATE_LIMIT_STORAGE_URI),
+    in_memory_fallback_enabled=bool(settings.REDIS_URL),
     in_memory_fallback=["120/minute"],
 )
 

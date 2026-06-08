@@ -2,16 +2,21 @@ import secrets
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from slowapi.util import get_remote_address
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.email import (
+    send_password_reset_email,
+    send_verification_email,
+    send_welcome_email,
+)
 from app.core.rate_limit import limiter
+from app.core.redis_client import redis_delete, redis_exists, redis_get, redis_set
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -20,7 +25,16 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RefreshRequest, SignupRequest, TokenResponse, UserResponse
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    RefreshRequest,
+    ResendVerificationRequest,
+    ResetPasswordRequest,
+    SignupRequest,
+    TokenResponse,
+    UserResponse,
+)
 from app.services.user_service import get_user_by_email, get_user_by_id
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -32,7 +46,12 @@ _GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 @router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/hour", key_func=get_remote_address)
-async def signup(request: Request, body: SignupRequest, db: AsyncSession = Depends(get_db)):
+async def signup(
+    request: Request,
+    body: SignupRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     existing = await get_user_by_email(db, body.email)
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
@@ -42,10 +61,15 @@ async def signup(request: Request, body: SignupRequest, db: AsyncSession = Depen
         name=body.name,
         password_hash=hash_password(body.password),
         provider="email",
+        is_verified=False,
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    token = secrets.token_urlsafe(32)
+    await redis_set(f"email_verify:{token}", str(user.id), ttl_seconds=86400)
+    background_tasks.add_task(send_verification_email, user.email, token, user.name)
 
     return TokenResponse(
         access_token=create_access_token(str(user.id)),
@@ -123,6 +147,7 @@ async def google_oauth_start(request: Request):
 async def google_oauth_callback(
     request: Request,
     db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = None,
     code: str = "",
     state: str = "",
     error: str = "",
@@ -162,20 +187,26 @@ async def google_oauth_callback(
     if existing and existing.provider != "google":
         return RedirectResponse(f"{frontend}/login?error=email_exists")
 
+    is_new_user = False
     if existing:
         if existing.is_suspended:
             return RedirectResponse(f"{frontend}/login?error=account_suspended")
         user = existing
     else:
+        is_new_user = True
         user = User(
             email=email,
             name=userinfo.get("name"),
             avatar_url=userinfo.get("picture"),
             provider="google",
+            is_verified=True,
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
+
+    if is_new_user and background_tasks is not None:
+        background_tasks.add_task(send_welcome_email, user.email, user.name)
 
     access_token = create_access_token(str(user.id))
     refresh_token = create_refresh_token(str(user.id))
@@ -185,3 +216,105 @@ async def google_oauth_callback(
     )
     redirect.delete_cookie("oauth_state")
     return redirect
+
+
+# ── Email verification ────────────────────────────────────────────────────────
+
+@router.get("/verify-email")
+@limiter.limit("10/hour", key_func=get_remote_address)
+async def verify_email(
+    request: Request,
+    token: str,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    frontend = settings.FRONTEND_URL
+    user_id = await redis_get(f"email_verify:{token}")
+    if not user_id:
+        return RedirectResponse(f"{frontend}/login?error=invalid_token")
+
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        return RedirectResponse(f"{frontend}/login?error=invalid_token")
+
+    user.is_verified = True
+    await redis_delete(f"email_verify:{token}")
+    await db.commit()
+
+    background_tasks.add_task(send_welcome_email, user.email, user.name)
+
+    return RedirectResponse(f"{frontend}/login?verified=true")
+
+
+@router.post("/resend-verification", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("3/hour", key_func=get_remote_address)
+async def resend_verification(
+    request: Request,
+    body: ResendVerificationRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    user = await get_user_by_email(db, body.email)
+    # Always return 204 — don't reveal if the email exists or is already verified
+    if not user or user.provider != "email" or user.is_verified:
+        return None
+
+    cooldown_key = f"email_resend_cooldown:{user.id}"
+    if await redis_exists(cooldown_key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="재발송은 5분에 1회만 요청할 수 있습니다",
+        )
+
+    token = secrets.token_urlsafe(32)
+    await redis_set(f"email_verify:{token}", str(user.id), ttl_seconds=86400)
+    await redis_set(cooldown_key, "1", ttl_seconds=300)
+    background_tasks.add_task(send_verification_email, user.email, token, user.name)
+    return None
+
+
+# ── Password reset ────────────────────────────────────────────────────────────
+
+@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("5/hour", key_func=get_remote_address)
+async def forgot_password(
+    request: Request,
+    body: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    user = await get_user_by_email(db, body.email)
+    # Silently succeed for unknown emails — don't leak account existence
+    if user and user.provider == "email":
+        token = secrets.token_urlsafe(32)
+        await redis_set(f"password_reset:{token}", str(user.id), ttl_seconds=3600)
+        background_tasks.add_task(send_password_reset_email, user.email, token)
+    return None
+
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+@limiter.limit("5/hour", key_func=get_remote_address)
+async def reset_password(
+    request: Request,
+    body: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = await redis_get(f"password_reset:{body.token}")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="유효하지 않거나 만료된 토큰입니다",
+        )
+
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="유효하지 않거나 만료된 토큰입니다",
+        )
+
+    user.password_hash = hash_password(body.new_password)
+    await redis_delete(f"password_reset:{body.token}")
+    await db.commit()
+
+    return {"message": "비밀번호가 성공적으로 변경되었습니다"}

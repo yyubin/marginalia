@@ -28,6 +28,15 @@ async def get_current_user(
     return user
 
 
+async def get_verified_user(current_user: User = Depends(get_current_user)) -> User:
+    if not current_user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="이메일 인증이 필요합니다. 받은편지함에서 인증 메일을 확인해주세요.",
+        )
+    return current_user
+
+
 async def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자 권한이 필요합니다")
