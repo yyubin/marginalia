@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node -e \"const fs=require('fs'),path=require('path');const src=path.join(require.resolve('pdfjs-dist/package.json'),'../build/pdf.worker.min.mjs');fs.copyFileSync(src,'public/pdf.worker.min.mjs');console.log('pdf.worker.min.mjs copied to public/')\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
