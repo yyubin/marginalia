@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     documents,
     highlights,
     notes,
+    search,
     settings,
     translate,
 )
@@ -22,3 +23,4 @@ router.include_router(collections.router)
 router.include_router(translate.router)
 router.include_router(settings.router)
 router.include_router(bookmarks.router)
+router.include_router(search.router)
