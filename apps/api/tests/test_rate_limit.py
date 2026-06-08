@@ -9,12 +9,12 @@ from app.core.rate_limit import limiter
 @pytest.fixture
 def with_rate_limiting():
     """Enable rate limiting with a test-unique key prefix for counter isolation."""
-    original_enabled = limiter._enabled
+    original_enabled = limiter.enabled
     original_prefix = limiter._key_prefix
-    limiter._enabled = True
+    limiter.enabled = True
     limiter._key_prefix = f"test-{uuid.uuid4()}"
     yield
-    limiter._enabled = original_enabled
+    limiter.enabled = original_enabled
     limiter._key_prefix = original_prefix
 
 
@@ -97,7 +97,7 @@ class TestUploadRateLimit:
 
 class TestLimiterConfiguration:
     def test_limiter_has_default_limit(self):
-        assert limiter.default_limits
+        assert limiter._default_limits
 
     def test_limiter_storage_is_configured(self):
         assert limiter._storage is not None

@@ -9,6 +9,8 @@ from app.models.user_settings import UserSettings
 
 
 class _FakeProvider:
+    name = "fake"
+
     def __init__(self, chunks=("안", "녕")):
         self.chunks = chunks
         self.calls = []

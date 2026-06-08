@@ -134,7 +134,7 @@ class TestRefresh:
 
 class TestLogout:
     async def test_returns_204(self, client, auth_headers):
-        response = await client.delete("/api/v1/auth/logout", headers=auth_headers)
+        response = await client.post("/api/v1/auth/logout", headers=auth_headers)
         assert response.status_code == 204
 
 
@@ -208,9 +208,9 @@ class TestGoogleOAuth:
                 follow_redirects=False,
             )
         assert response.status_code in (302, 307)
-        location = response.headers["location"]
-        assert "access_token=" in location
-        assert "refresh_token=" in location
+        assert response.headers["location"].endswith("/callback")
+        assert "access_token" in response.cookies
+        assert "refresh_token" in response.cookies
 
     async def test_callback_existing_google_user_returns_tokens(self, client, user):
         state = "valid-csrf-state-2"
@@ -222,7 +222,8 @@ class TestGoogleOAuth:
                 follow_redirects=False,
             )
         assert response.status_code in (302, 307)
-        assert "access_token=" in response.headers["location"]
+        assert response.headers["location"].endswith("/callback")
+        assert "access_token" in response.cookies
 
     async def test_callback_email_registered_with_other_provider_redirects_with_error(self, client, db):
         conflict_user = User(

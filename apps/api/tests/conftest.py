@@ -18,10 +18,10 @@ from app.models.user import User
 
 @pytest.fixture(autouse=True)
 def disable_rate_limiting():
-    original = limiter._enabled
-    limiter._enabled = False
+    original = limiter.enabled
+    limiter.enabled = False
     yield
-    limiter._enabled = original
+    limiter.enabled = original
 
 
 @pytest.fixture(autouse=True)
