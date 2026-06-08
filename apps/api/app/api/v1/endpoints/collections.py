@@ -41,6 +41,16 @@ async def add_collection_item(
 ):
     collection = await _get_or_create_collection(db, doc_id, current_user.id)
 
+    highlight_check = await db.execute(
+        select(Highlight).where(
+            Highlight.id == body.highlight_id,
+            Highlight.document_id == doc_id,
+            Highlight.user_id == current_user.id,
+        )
+    )
+    if not highlight_check.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Highlight not found")
+
     result = await db.execute(
         select(CollectionItem).where(
             CollectionItem.collection_id == collection.id,

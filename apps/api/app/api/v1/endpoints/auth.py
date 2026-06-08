@@ -18,7 +18,7 @@ from app.core.security import (
 )
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RefreshRequest, SignupRequest, TokenResponse, UserResponse
-from app.services.user_service import get_user_by_email
+from app.services.user_service import get_user_by_email, get_user_by_id
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -62,9 +62,13 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(body: RefreshRequest):
-    user_id = decode_token(body.refresh_token)
+async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    user_id = decode_token(body.refresh_token, expected_type="refresh")
     if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+    user = await get_user_by_id(db, user_id)
+    if not user or user.is_suspended:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
     return TokenResponse(
@@ -151,6 +155,8 @@ async def google_oauth_callback(
         return RedirectResponse(f"{frontend}/login?error=email_exists")
 
     if existing:
+        if existing.is_suspended:
+            return RedirectResponse(f"{frontend}/login?error=account_suspended")
         user = existing
     else:
         user = User(

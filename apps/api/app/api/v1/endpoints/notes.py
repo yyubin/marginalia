@@ -36,6 +36,11 @@ async def create_note(
     current_user: User = Depends(get_current_user),
 ):
     highlight = await _get_owned_highlight(db, highlight_id, current_user.id)
+    existing = await db.scalar(
+        select(Note).where(Note.highlight_id == highlight_id, Note.user_id == current_user.id)
+    )
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Note already exists for this highlight")
     note = Note(
         highlight_id=highlight.id,
         document_id=highlight.document_id,
