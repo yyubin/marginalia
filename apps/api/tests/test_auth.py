@@ -114,13 +114,22 @@ class TestRefresh:
         assert response.status_code == 401
 
     async def test_access_token_rejected_as_refresh(self, client, user):
-        # access tokens don't have type="refresh" claim
         from app.core.security import create_access_token
         access_token = create_access_token(str(user.id))
         response = await client.post("/api/v1/auth/refresh", json={"refresh_token": access_token})
-        # decode_token doesn't differentiate token types — still returns user_id
-        # This is an existing design decision, not a bug we need to guard here
-        assert response.status_code == 200
+        assert response.status_code == 401
+
+    async def test_refresh_token_rejected_as_bearer(self, client, user):
+        token = create_refresh_token(str(user.id))
+        response = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 401
+
+    async def test_suspended_user_cannot_refresh(self, client, db, user):
+        user.is_suspended = True
+        await db.flush()
+        token = create_refresh_token(str(user.id))
+        response = await client.post("/api/v1/auth/refresh", json={"refresh_token": token})
+        assert response.status_code == 401
 
 
 class TestLogout:
@@ -234,3 +243,19 @@ class TestGoogleOAuth:
             )
         assert response.status_code in (302, 307)
         assert "email_exists" in response.headers["location"]
+
+    async def test_callback_suspended_user_redirects_with_error(self, client, db):
+        suspended = User(email="suspended@example.com", provider="google", is_suspended=True)
+        db.add(suspended)
+        await db.flush()
+
+        state = "valid-csrf-state-4"
+        with _mock_google_client("suspended@example.com"):
+            response = await client.get(
+                "/api/v1/auth/google/callback",
+                params={"code": "auth-code", "state": state},
+                cookies={"oauth_state": state},
+                follow_redirects=False,
+            )
+        assert response.status_code in (302, 307)
+        assert "account_suspended" in response.headers["location"]

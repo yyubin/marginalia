@@ -201,6 +201,24 @@ class TestAddCollectionItem:
         )
         assert response.status_code == 404
 
+    async def test_highlight_from_different_document_returns_404(self, client, auth_headers, db, user, document):
+        other_doc = Document(user_id=user.id, title="Other PDF", file_key="test/other.pdf")
+        db.add(other_doc)
+        await db.flush()
+        foreign_highlight = Highlight(
+            document_id=other_doc.id, user_id=user.id,
+            position={**POSITION, "pageNumber": 1}, content={"text": "from other doc"}, color="yellow",
+        )
+        db.add(foreign_highlight)
+        await db.flush()
+
+        response = await client.post(
+            f"/api/v1/documents/{document.id}/collection/items",
+            json={"highlight_id": str(foreign_highlight.id)},
+            headers=auth_headers,
+        )
+        assert response.status_code == 404
+
 
 class TestRemoveCollectionItem:
     async def test_removes_item_from_collection(self, client, auth_headers, document, highlight):

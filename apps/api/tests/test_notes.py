@@ -66,6 +66,14 @@ class TestCreateNote:
         )
         assert response.status_code == 404
 
+    async def test_duplicate_note_returns_409(self, client, auth_headers, highlight, note):
+        response = await client.post(
+            f"/api/v1/highlights/{highlight.id}/note",
+            json={"content": "Second note"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 409
+
 
 class TestUpdateNote:
     async def test_updates_content(self, client, auth_headers, note):

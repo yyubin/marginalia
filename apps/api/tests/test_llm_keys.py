@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.crypto import decrypt_secret
 from app.models.user_llm_key import UserLLMKey
 
@@ -135,7 +136,7 @@ class TestSettingsResponseIncludesLLMInfo:
         response = await client.get("/api/v1/settings", headers=auth_headers)
         data = response.json()
         assert data["default_llm_provider"] is None
-        assert data["llm_fallback_allowed"] is True
+        assert data["llm_fallback_allowed"] == settings.DEFAULT_LLM_FALLBACK_ALLOWED
         assert data["llm_keys"] == []
 
     async def test_lists_registered_keys_masked_only(self, client, auth_headers, db, user):
