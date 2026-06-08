@@ -580,7 +580,7 @@ export default function PdfViewer({
 function Spinner() {
   return (
     <div className="flex-1 flex items-center justify-center h-full">
-      <div className="text-gray-400 text-sm">PDF 로딩 중...</div>
+      <div className="text-gray-400 text-sm">PDF 불러오는 중...</div>
     </div>
   );
 }

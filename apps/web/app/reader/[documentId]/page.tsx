@@ -307,7 +307,7 @@ export default function ReaderPage() {
           />
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
-            PDF 로딩 중...
+            PDF 불러오는 중...
           </div>
         )}
 
