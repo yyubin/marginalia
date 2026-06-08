@@ -14,9 +14,16 @@ from app.models.document import Document
 from app.models.user import User
 from app.models.user_settings import UserSettings
 from app.schemas.document import DocumentListResponse, DocumentResponse, DocumentUrlResponse
+from app.core.redis_client import redis_delete, redis_get, redis_set
 from app.services.r2_service import delete_file, generate_presigned_url, upload_file
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+_PRESIGNED_TTL = 3300  # 55 min — R2 URL expires in 60 min, 5 min safety buffer
+
+
+def _presigned_cache_key(doc_id: uuid.UUID) -> str:
+    return f"presigned_url:{doc_id}"
 
 
 def _encode_cursor(created_at: datetime, doc_id: uuid.UUID) -> str:
@@ -125,6 +132,7 @@ async def delete_document(
     current_user: User = Depends(get_current_user),
 ):
     doc = await _get_owned_doc(db, doc_id, current_user.id)
+    await redis_delete(_presigned_cache_key(doc_id))
     delete_file(doc.file_key)
     await db.delete(doc)
     await db.commit()
@@ -138,13 +146,17 @@ async def get_document_url(
 ):
     doc = await _get_owned_doc(db, doc_id, current_user.id)
 
-    # 마지막 열람 시각 갱신
     doc.last_opened = datetime.now(UTC)
     await db.commit()
 
-    expires_in = 3600
-    url = generate_presigned_url(doc.file_key, expires_in)
-    return DocumentUrlResponse(url=url, expires_in=expires_in)
+    cache_key = _presigned_cache_key(doc_id)
+    cached_url = await redis_get(cache_key)
+    if cached_url:
+        return DocumentUrlResponse(url=cached_url, expires_in=_PRESIGNED_TTL)
+
+    url = generate_presigned_url(doc.file_key, 3600)
+    await redis_set(cache_key, url, ttl_seconds=_PRESIGNED_TTL)
+    return DocumentUrlResponse(url=url, expires_in=3600)
 
 
 async def _get_owned_doc(db: AsyncSession, doc_id: uuid.UUID, user_id: uuid.UUID) -> Document:

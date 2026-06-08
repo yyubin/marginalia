@@ -6,6 +6,7 @@ from app.core.crypto import encrypt_secret, mask_key
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.rate_limit import limiter
+from app.core.redis_client import redis_delete, redis_get, redis_set
 from app.models.user import User
 from app.models.user_llm_key import UserLLMKey
 from app.models.user_settings import UserSettings
@@ -19,6 +20,16 @@ from app.schemas.user_settings import (
 from app.services.llm_providers import SUPPORTED_PROVIDERS, get_provider
 
 router = APIRouter(tags=["settings"])
+
+_SETTINGS_TTL = 3600
+
+
+def _settings_cache_key(user_id) -> str:
+    return f"settings:{user_id}"
+
+
+async def _invalidate_settings_cache(user_id) -> None:
+    await redis_delete(_settings_cache_key(user_id))
 
 
 async def _get_or_create_settings(db: AsyncSession, user_id) -> UserSettings:
@@ -61,9 +72,16 @@ async def get_settings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    cache_key = _settings_cache_key(current_user.id)
+    cached = await redis_get(cache_key)
+    if cached:
+        return UserSettingsResponse.model_validate_json(cached)
+
     user_settings = await _get_or_create_settings(db, current_user.id)
     llm_keys = await _get_llm_keys(db, current_user.id)
-    return _build_settings_response(user_settings, llm_keys)
+    response = _build_settings_response(user_settings, llm_keys)
+    await redis_set(cache_key, response.model_dump_json(), ttl_seconds=_SETTINGS_TTL)
+    return response
 
 
 @router.patch("/settings", response_model=UserSettingsResponse)
@@ -77,7 +95,9 @@ async def update_settings(
     await db.commit()
     await db.refresh(user_settings)
     llm_keys = await _get_llm_keys(db, current_user.id)
-    return _build_settings_response(user_settings, llm_keys)
+    response = _build_settings_response(user_settings, llm_keys)
+    await _invalidate_settings_cache(current_user.id)
+    return response
 
 
 @router.put("/settings/llm-provider", response_model=UserSettingsResponse)
@@ -94,7 +114,9 @@ async def update_default_llm_provider(
     await db.commit()
     await db.refresh(user_settings)
     llm_keys = await _get_llm_keys(db, current_user.id)
-    return _build_settings_response(user_settings, llm_keys)
+    response = _build_settings_response(user_settings, llm_keys)
+    await _invalidate_settings_cache(current_user.id)
+    return response
 
 
 @router.put("/settings/llm-keys/{provider}", response_model=LLMKeyInfo)
@@ -127,6 +149,7 @@ async def upsert_llm_key(
     key_row.key_preview = mask_key(body.api_key)
     await db.commit()
     await db.refresh(key_row)
+    await _invalidate_settings_cache(current_user.id)
     return key_row
 
 
@@ -146,3 +169,4 @@ async def delete_llm_key(
 
     await db.delete(key_row)
     await db.commit()
+    await _invalidate_settings_cache(current_user.id)
