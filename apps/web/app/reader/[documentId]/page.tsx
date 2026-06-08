@@ -11,6 +11,7 @@ import type { NewHighlight } from "react-pdf-highlighter";
 import { api } from "@/lib/api";
 import { useHighlightStore } from "@/store/highlightStore";
 import { useBookmarkStore } from "@/store/bookmarkStore";
+import { useReaderStore } from "@/store/readerStore";
 import SchemePanel from "@/components/reader/SchemePanel";
 import NotesPanel from "@/components/reader/NotesPanel";
 import TranslatePanel from "@/components/reader/TranslatePanel";
@@ -26,6 +27,10 @@ export default function ReaderPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { highlights, setHighlights, addHighlight, selectHighlight, updateHighlight, removeHighlight } = useHighlightStore();
+  const setActiveTool = useReaderStore((s) => s.setActiveTool);
+
+  // Reset tool mode when leaving reader
+  useEffect(() => () => setActiveTool("select"), [setActiveTool]);
   const { setBookmarks } = useBookmarkStore();
   const [translateTarget, setTranslateTarget] = useState<TranslateTarget | null>(null);
   const [loadedHighlightsDocumentId, setLoadedHighlightsDocumentId] = useState<string | null>(null);
@@ -286,6 +291,7 @@ export default function ReaderPage() {
 
         {pdfUrl ? (
           <PdfViewer
+            documentId={documentId}
             url={pdfUrl}
             highlights={highlights as AppHighlight[]}
             highlightsReady={loadedHighlightsDocumentId === documentId}

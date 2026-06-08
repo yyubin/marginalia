@@ -5,6 +5,9 @@ import "react-pdf-highlighter/dist/style.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PdfHighlighter, PdfLoader, Highlight, Popup } from "react-pdf-highlighter";
 import type { IHighlight, NewHighlight } from "react-pdf-highlighter";
+import { StickyNote as StickyNoteIcon } from "lucide-react";
+import { useReaderStore } from "@/store/readerStore";
+import StickyNoteLayer from "./StickyNoteLayer";
 // PdfHighlighter는 class component이므로 ref로 viewer 접근 가능
 type PdfHighlighterInstance = InstanceType<typeof PdfHighlighter>;
 type PdfViewerLike = {
@@ -39,6 +42,7 @@ const COLOR_STYLE: Record<HighlightColor, string> = {
 export type AppHighlight = IHighlight & { color: HighlightColor };
 
 interface Props {
+  documentId: string;
   url: string;
   highlights: AppHighlight[];
   highlightsReady: boolean;
@@ -58,6 +62,7 @@ const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3.0;
 
 export default function PdfViewer({
+  documentId,
   url,
   highlights,
   highlightsReady,
@@ -76,6 +81,8 @@ export default function PdfViewer({
   const cleanupPageTracking = useRef<(() => void) | null>(null);
   const currentPageRef = useRef(1);
   const onPageChangeRef = useRef(onPageChange);
+  const [pdfContainer, setPdfContainer] = useState<HTMLElement | null>(null);
+  const { activeTool, toggleStickyNoteTool } = useReaderStore();
 
   useEffect(() => () => { cleanupPageTracking.current?.(); }, []);
   useEffect(() => {
@@ -167,6 +174,7 @@ export default function PdfViewer({
     if (!viewer) return false;
 
     syncViewerPageState();
+    if (viewer.container) setPdfContainer(viewer.container);
 
     const eventBus = viewer.eventBus;
     const scrollContainer = viewer.container;
@@ -410,8 +418,21 @@ export default function PdfViewer({
         >
           +
         </button>
+        <div className="w-px h-3.5 bg-gray-200 mx-1" />
+        <button
+          onClick={toggleStickyNoteTool}
+          className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
+            activeTool === "sticky-note"
+              ? "bg-yellow-400 text-white"
+              : "hover:bg-gray-100 text-gray-500"
+          }`}
+          title="스티커 메모 추가 (클릭 후 PDF를 클릭)"
+        >
+          <StickyNoteIcon size={14} />
+        </button>
       </div>
 
+      <StickyNoteLayer documentId={documentId} pdfContainer={pdfContainer} />
       <PdfLoader workerSrc={WORKER_SRC} url={url} beforeLoad={<Spinner />}>
         {(pdfDocument) => (
           <>

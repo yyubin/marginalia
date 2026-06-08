@@ -161,3 +161,19 @@ export interface SearchResponse {
   items: SearchResultItem[];
   has_more: boolean;
 }
+
+export type StickyNoteColor = "yellow" | "green" | "blue" | "pink";
+
+export interface StickyNote {
+  id: string;
+  document_id: string;
+  user_id: string;
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  content: string;
+  color: StickyNoteColor;
+  created_at: string;
+  updated_at: string;
+}
