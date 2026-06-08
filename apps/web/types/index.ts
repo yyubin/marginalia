@@ -7,6 +7,7 @@ export interface User {
   avatar_url: string | null;
   provider: string;
   is_admin: boolean;
+  is_verified: boolean;
 }
 
 export interface HighlightPosition {

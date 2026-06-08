@@ -63,13 +63,16 @@ export default function DashboardPage() {
     e.target.value = ""; // 같은 파일 재선택 허용
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    try {
+      await api.post("/auth/logout");
+    } catch {}
     localStorage.clear();
     router.push("/login");
   }
 
   useEffect(() => {
-    if (!localStorage.getItem("access_token")) router.push("/login");
+    if (!localStorage.getItem("is_auth")) router.push("/login");
   }, [router]);
 
   return (

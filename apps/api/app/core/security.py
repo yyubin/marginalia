@@ -1,3 +1,4 @@
+import hashlib
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
@@ -41,3 +42,19 @@ def decode_token(token: str, expected_type: str = "access") -> str | None:
         return payload.get("sub")
     except JWTError:
         return None
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def get_token_remaining_ttl(token: str) -> int:
+    """Returns remaining lifetime in seconds; 0 if expired or invalid."""
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        exp = payload.get("exp")
+        if exp is None:
+            return 0
+        return max(0, int(exp - datetime.now(UTC).timestamp()))
+    except JWTError:
+        return 0

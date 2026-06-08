@@ -32,7 +32,7 @@ export default function AdminPage() {
   });
 
   useEffect(() => {
-    if (!localStorage.getItem("access_token")) {
+    if (!localStorage.getItem("is_auth")) {
       router.replace("/login");
       return;
     }

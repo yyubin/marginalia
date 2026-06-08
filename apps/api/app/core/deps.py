@@ -1,5 +1,4 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -7,16 +6,23 @@ from app.core.security import decode_token
 from app.models.user import User
 from app.services.user_service import get_user_by_id
 
-bearer = HTTPBearer()
-
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer),
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    user_id = decode_token(credentials.credentials)
+    # Cookie takes priority; Authorization header is a fallback for tests / API clients
+    token = request.cookies.get("access_token")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+    user_id = decode_token(token)
     if not user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 
     user = await get_user_by_id(db, user_id)
     if not user:

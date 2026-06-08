@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Footer } from "@/components/ui/footer";
-import type { UserSettings } from "@/types";
+import type { User, UserSettings } from "@/types";
 
 const LLM_PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic (Claude)",
@@ -19,12 +19,18 @@ export default function SettingsPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!localStorage.getItem("access_token")) router.push("/login");
+    if (!localStorage.getItem("is_auth")) router.push("/login");
   }, [router]);
 
   const { data: settings, isLoading } = useQuery<UserSettings>({
     queryKey: ["settings"],
     queryFn: () => api.get("/settings").then((r) => r.data),
+  });
+
+  const { data: me } = useQuery<User>({
+    queryKey: ["me"],
+    queryFn: () => api.get("/auth/me").then((r) => r.data),
+    staleTime: 1000 * 60 * 5,
   });
 
   const initialPerPage = settings?.highlights_per_page ?? 50;
@@ -35,6 +41,7 @@ export default function SettingsPage() {
       initialPerPage={initialPerPage}
       settings={settings}
       isLoading={isLoading}
+      provider={me?.provider}
       onBack={() => router.push("/dashboard")}
     />
   );
@@ -44,11 +51,13 @@ function SettingsForm({
   initialPerPage,
   settings,
   isLoading,
+  provider,
   onBack,
 }: {
   initialPerPage: number;
   settings?: UserSettings;
   isLoading: boolean;
+  provider?: string;
   onBack: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -131,6 +140,8 @@ function SettingsForm({
         </section>
 
         <LLMKeysSection settings={settings} isLoading={isLoading} />
+
+        {provider === "email" && <ChangePasswordSection />}
       </div>
 
       <Footer />
@@ -256,6 +267,138 @@ function LLMKeysSection({ settings, isLoading }: { settings?: UserSettings; isLo
           ))}
         </select>
       </div>
+    </section>
+  );
+}
+
+function getPasswordStrength(password: string): { score: number; label: string; color: string } {
+  if (!password) return { score: 0, label: "", color: "" };
+  const checks = [
+    password.length >= 8,
+    /[a-zA-Z]/.test(password),
+    /[0-9]/.test(password),
+    password.length >= 12,
+    /[^a-zA-Z0-9]/.test(password),
+  ];
+  const score = checks.filter(Boolean).length;
+  if (score <= 2) return { score, label: "약함", color: "bg-red-400" };
+  if (score <= 3) return { score, label: "보통", color: "bg-yellow-400" };
+  if (score <= 4) return { score, label: "강함", color: "bg-green-500" };
+  return { score, label: "매우 강함", color: "bg-green-400" };
+}
+
+function ChangePasswordSection() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const strength = getPasswordStrength(next);
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.post("/auth/change-password", {
+        current_password: current,
+        new_password: next,
+      }),
+    onSuccess: () => {
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+      setError(null);
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    },
+    onError: (err: unknown) => {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      if (status === 401) {
+        setError("현재 비밀번호가 올바르지 않습니다.");
+      } else {
+        setError(detail ?? "비밀번호 변경에 실패했습니다.");
+      }
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (next !== confirm) {
+      setError("새 비밀번호가 일치하지 않습니다.");
+      return;
+    }
+    setError(null);
+    setSuccess(false);
+    mutation.mutate();
+  };
+
+  return (
+    <section className="bg-white rounded-xl border p-6 space-y-4">
+      <h2 className="text-sm font-semibold">비밀번호 변경</h2>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="space-y-2">
+          <label className="text-sm text-gray-700">현재 비밀번호</label>
+          <input
+            type="password"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            required
+            autoComplete="current-password"
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm text-gray-700">새 비밀번호</label>
+          <input
+            type="password"
+            placeholder="영문·숫자 포함 8자 이상"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            required
+            autoComplete="new-password"
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+          />
+          {next && (
+            <div className="space-y-1">
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div
+                    key={i}
+                    className={`h-1 flex-1 rounded-full transition-colors ${
+                      i <= strength.score ? strength.color : "bg-gray-200"
+                    }`}
+                  />
+                ))}
+              </div>
+              <p className={`text-xs ${strength.score <= 2 ? "text-red-500" : strength.score <= 3 ? "text-yellow-500" : "text-green-600"}`}>
+                {strength.label}
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm text-gray-700">새 비밀번호 확인</label>
+          <input
+            type="password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            required
+            autoComplete="new-password"
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+          />
+        </div>
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <div className="flex items-center gap-3 pt-1">
+          <Button
+            size="sm"
+            type="submit"
+            disabled={mutation.isPending}
+          >
+            변경
+          </Button>
+          {success && <span className="text-xs text-green-500">비밀번호가 변경되었습니다</span>}
+        </div>
+      </form>
     </section>
   );
 }

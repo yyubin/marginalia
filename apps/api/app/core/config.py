@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     # Application base URL (used in email links)
     API_BASE_URL: str = "http://localhost:8000"
 
+    # Cookie settings
+    COOKIE_SECURE: bool = False       # True in production (HTTPS only)
+    COOKIE_SAMESITE: str = "lax"      # "none" when API and frontend are on different domains
+    COOKIE_DOMAIN: str = ""           # e.g. ".example.com" for subdomain sharing
+
 
 
 settings = Settings()

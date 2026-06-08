@@ -2,7 +2,7 @@ import secrets
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,13 +21,17 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    get_token_remaining_ttl,
     hash_password,
+    hash_token,
     verify_password,
 )
 from app.models.user import User
 from app.schemas.auth import (
+    ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
+    LogoutRequest,
     RefreshRequest,
     ResendVerificationRequest,
     ResetPasswordRequest,
@@ -39,6 +43,39 @@ from app.services.user_service import get_user_by_email, get_user_by_id
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+
+def _cookie_kwargs() -> dict:
+    return dict(
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN or None,
+    )
+
+
+def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    kw = _cookie_kwargs()
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        max_age=settings.JWT_EXPIRE_MINUTES * 60,
+        path="/",
+        **kw,
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        max_age=settings.JWT_REFRESH_EXPIRE_DAYS * 86400,
+        path="/api/v1/auth",
+        **kw,
+    )
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    kw = _cookie_kwargs()
+    response.delete_cookie(key="access_token", path="/", **kw)
+    response.delete_cookie(key="refresh_token", path="/api/v1/auth", **kw)
+
 _GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 _GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
@@ -48,6 +85,7 @@ _GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 @limiter.limit("5/hour", key_func=get_remote_address)
 async def signup(
     request: Request,
+    response: Response,
     body: SignupRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -71,29 +109,42 @@ async def signup(
     await redis_set(f"email_verify:{token}", str(user.id), ttl_seconds=86400)
     background_tasks.add_task(send_verification_email, user.email, token, user.name)
 
-    return TokenResponse(
-        access_token=create_access_token(str(user.id)),
-        refresh_token=create_refresh_token(str(user.id)),
-    )
+    access_token = create_access_token(str(user.id))
+    refresh_token = create_refresh_token(str(user.id))
+    _set_auth_cookies(response, access_token, refresh_token)
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute", key_func=get_remote_address)
-async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(request: Request, response: Response, body: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = await get_user_by_email(db, body.email)
-    if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
+    if not user or user.is_suspended or not user.password_hash or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    return TokenResponse(
-        access_token=create_access_token(str(user.id)),
-        refresh_token=create_refresh_token(str(user.id)),
-    )
+    access_token = create_access_token(str(user.id))
+    refresh_token = create_refresh_token(str(user.id))
+    _set_auth_cookies(response, access_token, refresh_token)
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("30/minute", key_func=get_remote_address)
-async def refresh(request: Request, body: RefreshRequest, db: AsyncSession = Depends(get_db)):
-    user_id = decode_token(body.refresh_token, expected_type="refresh")
+async def refresh(
+    request: Request,
+    response: Response,
+    body: RefreshRequest | None = None,
+    refresh_token: str | None = Cookie(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    token = (body.refresh_token if body else None) or refresh_token
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No refresh token provided")
+
+    if await redis_exists(f"token_blacklist:{hash_token(token)}"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
+
+    user_id = decode_token(token, expected_type="refresh")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
@@ -101,15 +152,28 @@ async def refresh(request: Request, body: RefreshRequest, db: AsyncSession = Dep
     if not user or user.is_suspended:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
-    return TokenResponse(
-        access_token=create_access_token(user_id),
-        refresh_token=create_refresh_token(user_id),
-    )
+    ttl = get_token_remaining_ttl(token)
+    if ttl > 0:
+        await redis_set(f"token_blacklist:{hash_token(token)}", "1", ttl_seconds=ttl)
+
+    new_access = create_access_token(user_id)
+    new_refresh = create_refresh_token(user_id)
+    _set_auth_cookies(response, new_access, new_refresh)
+    return TokenResponse(access_token=new_access, refresh_token=new_refresh)
 
 
-@router.delete("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout():
-    # JWT는 stateless — 클라이언트에서 토큰 삭제로 처리
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    response: Response,
+    body: LogoutRequest | None = None,
+    refresh_token: str | None = Cookie(default=None),
+):
+    token = (body.refresh_token if body else None) or refresh_token
+    if token:
+        ttl = get_token_remaining_ttl(token)
+        if ttl > 0:
+            await redis_set(f"token_blacklist:{hash_token(token)}", "1", ttl_seconds=ttl)
+    _clear_auth_cookies(response)
     return None
 
 
@@ -211,10 +275,9 @@ async def google_oauth_callback(
     access_token = create_access_token(str(user.id))
     refresh_token = create_refresh_token(str(user.id))
 
-    redirect = RedirectResponse(
-        f"{frontend}/callback?access_token={access_token}&refresh_token={refresh_token}"
-    )
+    redirect = RedirectResponse(f"{frontend}/callback")
     redirect.delete_cookie("oauth_state")
+    _set_auth_cookies(redirect, access_token, refresh_token)
     return redirect
 
 
@@ -317,4 +380,27 @@ async def reset_password(
     await redis_delete(f"password_reset:{body.token}")
     await db.commit()
 
+    return {"message": "비밀번호가 성공적으로 변경되었습니다"}
+
+
+# ── Change password (authenticated) ──────────────────────────────────────────
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+async def change_password(
+    body: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.provider != "email":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google 계정은 비밀번호를 변경할 수 없습니다",
+        )
+    if not current_user.password_hash or not verify_password(body.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="현재 비밀번호가 올바르지 않습니다",
+        )
+    current_user.password_hash = hash_password(body.new_password)
+    await db.commit()
     return {"message": "비밀번호가 성공적으로 변경되었습니다"}

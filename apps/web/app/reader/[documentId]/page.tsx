@@ -79,7 +79,7 @@ export default function ReaderPage() {
   }, [panelSide]);
 
   useEffect(() => {
-    if (!localStorage.getItem("access_token")) router.push("/login");
+    if (!localStorage.getItem("is_auth")) router.push("/login");
   }, [router]);
 
   const { data: docData } = useQuery({
