@@ -26,3 +26,19 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+/**
+ * FastAPI/Pydantic returns `detail` as a plain string for HTTPException,
+ * but as an array of {msg, loc, type} objects for 422 validation errors.
+ * Rendering the array directly would crash React, so normalize both shapes
+ * into a single human-readable string (or null if nothing usable is found).
+ */
+export function extractErrorDetail(err: unknown): string | null {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0] as { msg?: unknown };
+    if (typeof first?.msg === "string") return first.msg.replace(/^Value error,\s*/, "");
+  }
+  return null;
+}

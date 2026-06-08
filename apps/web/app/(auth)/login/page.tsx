@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { api } from "@/lib/api";
+import { api, extractErrorDetail } from "@/lib/api";
 
 const ERROR_MESSAGES: Record<string, string> = {
   oauth_cancelled: "Google 로그인이 취소되었습니다.",
@@ -38,7 +38,7 @@ function LoginContent() {
       localStorage.setItem("is_auth", "1");
       router.replace("/dashboard");
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const detail = extractErrorDetail(err);
       if (detail === "Invalid credentials") {
         setError("이메일 또는 비밀번호가 올바르지 않습니다.");
       } else {

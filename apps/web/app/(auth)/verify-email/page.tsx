@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, extractErrorDetail } from "@/lib/api";
 
 type State = "loading" | "success" | "error";
 
@@ -30,10 +30,8 @@ function VerifyEmailContent() {
         setTimeout(() => router.replace("/dashboard"), 2500);
       })
       .catch((err: unknown) => {
-        const detail =
-          (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
         setState("error");
-        setErrorMsg(detail ?? "인증에 실패했습니다.");
+        setErrorMsg(extractErrorDetail(err) ?? "인증에 실패했습니다.");
       });
   }, [token, router]);
 

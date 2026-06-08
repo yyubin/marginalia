@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, extractErrorDetail } from "@/lib/api";
 
 function getPasswordStrength(password: string): { score: number; label: string; color: string } {
   if (!password) return { score: 0, label: "", color: "" };
@@ -32,9 +32,29 @@ function ResetPasswordContent() {
 
   const strength = getPasswordStrength(password);
 
+  useEffect(() => {
+    if (!token) {
+      const id = setTimeout(() => router.replace("/forgot-password"), 2500);
+      return () => clearTimeout(id);
+    }
+  }, [token, router]);
+
   if (!token) {
-    router.replace("/forgot-password");
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#09090b] p-4">
+        <div className="w-full max-w-sm space-y-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-2 text-center">
+            <h2 className="text-base font-semibold text-white">유효하지 않은 링크입니다</h2>
+            <p className="text-sm text-zinc-400">
+              비밀번호 찾기를 다시 요청해주세요. 잠시 후 이동합니다.
+            </p>
+            <a href="/forgot-password" className="inline-block text-sm text-blue-400 hover:text-blue-300 transition-colors">
+              비밀번호 찾기로 이동
+            </a>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,12 +69,11 @@ function ResetPasswordContent() {
       await api.post("/auth/reset-password", { token, new_password: password });
       router.replace("/login?reset=true");
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 400) {
         setError("링크가 유효하지 않거나 만료되었습니다. 비밀번호 찾기를 다시 시도해주세요.");
       } else {
-        setError(detail ?? "비밀번호 변경에 실패했습니다.");
+        setError(extractErrorDetail(err) ?? "비밀번호 변경에 실패했습니다.");
       }
     } finally {
       setLoading(false);

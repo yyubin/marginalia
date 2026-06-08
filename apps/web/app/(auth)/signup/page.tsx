@@ -1,9 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { api, extractErrorDetail } from "@/lib/api";
 
 type Step = "form" | "check-email";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateEmailFormat(value: string): string | null {
+  if (!value) return null;
+  return EMAIL_REGEX.test(value) ? null : "올바른 이메일 형식이 아닙니다. (예: name@example.com)";
+}
+
+function validatePasswordPolicy(value: string): string | null {
+  if (!value) return null;
+  if (value.length < 8) return "비밀번호는 8자 이상이어야 합니다.";
+  if (!/[a-zA-Z]/.test(value)) return "비밀번호에 영문자가 포함되어야 합니다.";
+  if (!/[0-9]/.test(value)) return "비밀번호에 숫자가 포함되어야 합니다.";
+  return null;
+}
 
 function getPasswordStrength(password: string): { score: number; label: string; color: string } {
   if (!password) return { score: 0, label: "", color: "" };
@@ -26,6 +41,8 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
@@ -37,12 +54,19 @@ export default function SignupPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const emailMessage = validateEmailFormat(email);
+    const passwordMessage = validatePasswordPolicy(password);
+    setEmailError(emailMessage);
+    setPasswordError(passwordMessage);
+    if (emailMessage || passwordMessage) return;
+
     setLoading(true);
     try {
       await api.post("/auth/signup", { email, password, name: name || undefined });
       setStep("check-email");
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const detail = extractErrorDetail(err);
       if (detail === "Email already registered") {
         setError("이미 사용 중인 이메일입니다.");
       } else {
@@ -130,25 +154,37 @@ export default function SignupPage() {
               autoComplete="name"
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
-            <input
-              type="email"
-              placeholder="이메일"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+            <div className="space-y-1.5">
+              <input
+                type="email"
+                placeholder="이메일"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (emailError) setEmailError(null);
+                }}
+                onBlur={() => setEmailError(validateEmailFormat(email))}
+                required
+                autoComplete="email"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              {emailError && <p className="text-xs text-red-400">{emailError}</p>}
+            </div>
             <div className="space-y-1.5">
               <input
                 type="password"
                 placeholder="비밀번호 (영문·숫자 포함 8자 이상)"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (passwordError) setPasswordError(null);
+                }}
+                onBlur={() => setPasswordError(validatePasswordPolicy(password))}
                 required
                 autoComplete="new-password"
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              {passwordError && <p className="text-xs text-red-400">{passwordError}</p>}
               {password && (
                 <div className="space-y-1">
                   <div className="flex gap-1">
