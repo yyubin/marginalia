@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -18,7 +18,6 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
   const queryClient = useQueryClient();
   const [pageElements, setPageElements] = useState<Map<number, HTMLElement>>(new Map());
   const [newNoteId, setNewNoteId] = useState<string | null>(null);
-  const observerRef = useRef<MutationObserver | null>(null);
 
   // ── Fetch notes ────────────────────────────────────────────────────────────
   const { data: notes = [] } = useQuery<StickyNoteType[]>({
@@ -59,61 +58,69 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
     },
   });
 
-  // ── Discover page DOM elements ─────────────────────────────────────────────
-  const refreshPageElements = useCallback(() => {
-    if (!pdfContainer) return;
-    const nodes = pdfContainer.querySelectorAll<HTMLElement>("[data-page-number]");
-    const map = new Map<number, HTMLElement>();
-    nodes.forEach((node) => {
-      const pageNum = parseInt(node.dataset.pageNumber ?? "0", 10);
-      if (pageNum > 0) map.set(pageNum, node);
+  // ── Discover page DOM elements via polling ─────────────────────────────────
+  // MutationObserver causes an infinite loop (portal insertions re-trigger it).
+  // Continuous interval polling: detects both initial render and page element
+  // replacement that can happen when pdf.js finishes loading.
+  const refreshPages = useCallback(() => {
+    const root = pdfContainer ?? document.body;
+    const nodes = root.querySelectorAll<HTMLElement>("[data-page-number]");
+
+    // Ensure absolute-positioned sticky notes stay within each page's bounds
+    nodes.forEach((node) => { node.style.position = "relative"; });
+
+    setPageElements((prev) => {
+      if (nodes.length === 0) return prev.size === 0 ? prev : new Map();
+
+      const map = new Map<number, HTMLElement>();
+      nodes.forEach((node) => {
+        const n = parseInt(node.dataset.pageNumber ?? "0", 10);
+        if (n > 0) map.set(n, node);
+      });
+      if (
+        map.size === prev.size &&
+        [...map.entries()].every(([k, v]) => prev.get(k) === v)
+      ) {
+        return prev;
+      }
+      return map;
     });
-    setPageElements(map);
   }, [pdfContainer]);
 
   useEffect(() => {
-    if (!pdfContainer) return;
-    refreshPageElements();
+    refreshPages(); // immediate check
+    const id = setInterval(refreshPages, 500);
+    return () => clearInterval(id);
+  }, [refreshPages]);
 
-    observerRef.current?.disconnect();
-    const observer = new MutationObserver(refreshPageElements);
-    observer.observe(pdfContainer, { childList: true, subtree: true });
-    observerRef.current = observer;
-
-    return () => observer.disconnect();
-  }, [pdfContainer, refreshPageElements]);
-
-  // ── Click handler: create note in sticky-note mode ─────────────────────────
+  // ── Cursor style when in sticky-note mode ─────────────────────────────────
   useEffect(() => {
     if (activeTool !== "sticky-note") return;
-
-    const handlers: Array<{ el: HTMLElement; fn: (e: MouseEvent) => void }> = [];
-
-    pageElements.forEach((pageEl, pageNum) => {
-      const fn = (e: MouseEvent) => {
-        // Don't create note when clicking on an existing sticky note
-        if ((e.target as HTMLElement).closest("[data-sticky-note]")) return;
-        const rect = pageEl.getBoundingClientRect();
-        const x = Math.max(0, Math.min(80, ((e.clientX - rect.left) / rect.width) * 100));
-        const y = Math.max(0, Math.min(90, ((e.clientY - rect.top) / rect.height) * 100));
-        createMutation.mutate({ page: pageNum, x, y });
-      };
-      pageEl.addEventListener("click", fn);
-      handlers.push({ el: pageEl, fn });
+    pageElements.forEach((el) => {
+      el.style.cursor = "crosshair";
     });
-
-    return () => handlers.forEach(({ el, fn }) => el.removeEventListener("click", fn));
-  }, [activeTool, pageElements, createMutation]);
-
-  // ── Cursor style on pages ─────────────────────────────────────────────────
-  useEffect(() => {
-    pageElements.forEach((pageEl) => {
-      pageEl.style.cursor = activeTool === "sticky-note" ? "crosshair" : "";
-    });
-    return () => pageElements.forEach((pageEl) => { pageEl.style.cursor = ""; });
+    return () => {
+      pageElements.forEach((el) => {
+        el.style.cursor = "";
+      });
+    };
   }, [activeTool, pageElements]);
 
-  // Group notes by page
+  // ── Create note on page click ──────────────────────────────────────────────
+  function handlePageClick(
+    e: React.MouseEvent,
+    pageEl: HTMLElement,
+    pageNum: number
+  ) {
+    if (activeTool !== "sticky-note") return;
+    if ((e.target as HTMLElement).closest("[data-sticky-note]")) return;
+    const rect = pageEl.getBoundingClientRect();
+    const x = Math.max(0, Math.min(80, ((e.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(90, ((e.clientY - rect.top) / rect.height) * 100));
+    createMutation.mutate({ page: pageNum, x, y });
+  }
+
+  // ── Group notes by page ────────────────────────────────────────────────────
   const notesByPage = new Map<number, StickyNoteType[]>();
   notes.forEach((note) => {
     const arr = notesByPage.get(note.page) ?? [];
@@ -121,16 +128,22 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
     notesByPage.set(note.page, arr);
   });
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
       {Array.from(pageElements.entries()).map(([pageNum, pageEl]) => {
         const pageNotes = notesByPage.get(pageNum) ?? [];
         return createPortal(
-          <div
-            className="absolute inset-0"
-            style={{ pointerEvents: "none", zIndex: 10 }}
-            data-sticky-layer={pageNum}
-          >
+          <>
+            {/* Transparent click overlay — only shown in sticky-note mode */}
+            {activeTool === "sticky-note" && (
+              <div
+                className="absolute inset-0"
+                style={{ zIndex: 9 }}
+                onClick={(e) => handlePageClick(e, pageEl, pageNum)}
+              />
+            )}
+
             {pageNotes.map((note) => (
               <StickyNote
                 key={note.id}
@@ -144,8 +157,9 @@ export default function StickyNoteLayer({ documentId, pdfContainer }: Props) {
                 onDelete={() => deleteMutation.mutate(note.id)}
               />
             ))}
-          </div>,
-          pageEl
+          </>,
+          pageEl,
+          `sticky-${pageNum}`
         );
       })}
     </>

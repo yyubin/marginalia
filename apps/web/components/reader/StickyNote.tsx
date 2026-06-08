@@ -118,6 +118,7 @@ export default function StickyNote({ note, pageEl, autoFocus, onUpdate, onDelete
 
   return (
     <div
+      data-sticky-note={note.id}
       className={`absolute rounded shadow-md border flex flex-col select-none ${styles.bg} ${styles.border}`}
       style={{
         left: `${note.x}%`,
