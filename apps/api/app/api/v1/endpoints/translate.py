@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,7 @@ def _sse(event: str, payload: dict) -> str:
 @limiter.limit("10/minute")
 async def translate(
     request: Request,
+    response: Response,
     body: TranslateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_verified_user),

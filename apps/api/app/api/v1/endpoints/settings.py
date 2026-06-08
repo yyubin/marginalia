@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -123,6 +123,7 @@ async def update_default_llm_provider(
 @limiter.limit("5/minute")
 async def upsert_llm_key(
     request: Request,
+    response: Response,
     provider: str,
     body: LLMKeyUpsertRequest,
     db: AsyncSession = Depends(get_db),

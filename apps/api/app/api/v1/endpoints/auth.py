@@ -220,7 +220,7 @@ async def delete_account(
 
 @router.get("/google")
 @limiter.limit("20/hour", key_func=get_remote_address)
-async def google_oauth_start(request: Request):
+async def google_oauth_start(request: Request, response: Response):
     state = secrets.token_urlsafe(32)
     params = urlencode({
         "client_id": settings.GOOGLE_CLIENT_ID,
@@ -231,21 +231,22 @@ async def google_oauth_start(request: Request):
         "access_type": "offline",
         "prompt": "select_account",
     })
-    response = RedirectResponse(url=f"{_GOOGLE_AUTH_URL}?{params}")
-    response.set_cookie(
+    redirect = RedirectResponse(url=f"{_GOOGLE_AUTH_URL}?{params}")
+    redirect.set_cookie(
         key="oauth_state",
         value=state,
         max_age=600,
         httponly=True,
         samesite="lax",
     )
-    return response
+    return redirect
 
 
 @router.get("/google/callback")
 @limiter.limit("20/hour", key_func=get_remote_address)
 async def google_oauth_callback(
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     background_tasks: BackgroundTasks = None,
     code: str = "",
@@ -323,6 +324,7 @@ async def google_oauth_callback(
 @limiter.limit("10/hour", key_func=get_remote_address)
 async def verify_email(
     request: Request,
+    response: Response,
     body: VerifyEmailRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -348,6 +350,7 @@ async def verify_email(
 @limiter.limit("3/hour", key_func=get_remote_address)
 async def resend_verification(
     request: Request,
+    response: Response,
     body: ResendVerificationRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -377,6 +380,7 @@ async def resend_verification(
 @limiter.limit("5/hour", key_func=get_remote_address)
 async def forgot_password(
     request: Request,
+    response: Response,
     body: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -394,6 +398,7 @@ async def forgot_password(
 @limiter.limit("5/hour", key_func=get_remote_address)
 async def reset_password(
     request: Request,
+    response: Response,
     body: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):

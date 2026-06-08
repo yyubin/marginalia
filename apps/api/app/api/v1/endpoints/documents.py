@@ -2,7 +2,7 @@ import base64
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,6 +71,7 @@ async def list_documents(
 @limiter.limit("20/hour")
 async def upload_document(
     request: Request,
+    response: Response,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_verified_user),
