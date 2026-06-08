@@ -145,3 +145,19 @@ export interface AdminStats {
   signups_last_7_days: number;
   new_documents_last_7_days: number;
 }
+
+export interface SearchResultItem {
+  type: "highlight" | "note";
+  id: string;
+  document_id: string;
+  document_title: string;
+  content_text: string;
+  color: string | null;
+  highlight_id: string | null;
+  created_at: string;
+}
+
+export interface SearchResponse {
+  items: SearchResultItem[];
+  has_more: boolean;
+}

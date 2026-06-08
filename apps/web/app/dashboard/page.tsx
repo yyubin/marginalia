@@ -96,6 +96,15 @@ export default function DashboardPage() {
           {uploadError && (
             <span className="text-xs text-red-500">{uploadError}</span>
           )}
+          <button
+            onClick={() => router.push("/search")}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 border rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            검색
+          </button>
           <Button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadMutation.isPending || (documents?.length ?? 0) >= maxDocuments}
