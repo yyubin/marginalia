@@ -47,7 +47,7 @@ export default function TranslatePanel({ target, documentId, onClose, onHighligh
       setErrorMessage(null);
       setStatus("streaming");
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/translate`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "/api/v1"}/translate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",

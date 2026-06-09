@@ -20,7 +20,7 @@
 
 ## 1. 보안
 
-### Rate Limiting
+### ~~Rate Limiting~~
 - 현재 모든 엔드포인트에 호출 횟수 제한 없음
 - `/auth/login`, `/auth/signup`, `/translate` 등은 무제한 요청 가능
 - `slowapi` 미들웨어로 IP/유저별 제한 적용 필요
@@ -36,25 +36,22 @@ limiter = Limiter(key_func=get_remote_address)
 async def login(...): ...
 ```
 
-### JWT 토큰 무효화
+### ~~JWT 토큰 무효화~~
 - 로그아웃이 클라이언트에서 토큰을 삭제하는 것에 불과
 - 탈취된 토큰을 서버에서 막을 방법이 없음
 - Redis 블랙리스트 또는 refresh token DB 저장 방식으로 전환 필요
 
-### 파일 검증 강화
-- 현재 `content_type == "application/pdf"` 헤더만 체크
-- 헤더는 클라이언트가 임의로 조작 가능
-- 실제 파일 시그니처(`%PDF`) 바이트 검사 추가 필요
-```python
-if not file_bytes.startswith(b"%PDF"):
-    raise HTTPException(status_code=400, detail="유효하지 않은 PDF 파일입니다")
-```
+### ~~파일 검증 강화~~ ✅
+- ~~현재 `content_type == "application/pdf"` 헤더만 체크~~
+- ~~헤더는 클라이언트가 임의로 조작 가능~~
+- `%PDF-` 매직 바이트 검사 추가 완료 (`documents.py`)
 
-### 비밀번호 정책
-- `SignupRequest.password`에 최소 길이, 복잡도 조건 없음
-- Pydantic validator로 최소 8자, 영문+숫자 조합 등 정책 추가 필요
+### ~~비밀번호 정책~~ ✅
+- ~~`SignupRequest.password`에 최소 길이, 복잡도 조건 없음~~
+- `config.py`의 `PASSWORD_MIN_LENGTH` / `PASSWORD_REQUIRE_LETTER` / `PASSWORD_REQUIRE_DIGIT`으로 정책 관리
+- `security.validate_password()`로 통합, `SignupRequest` · `ResetPasswordRequest` · `ChangePasswordRequest`에 공통 적용
 
-### 이메일 인증
+### ~~이메일 인증~~
 - 회원가입 시 이메일 소유 여부를 검증하지 않음
 - 타인 이메일로 가입 가능한 상태
 - 가입 후 인증 링크 발송 → 인증 전 기능 제한 플로우 필요
@@ -63,23 +60,24 @@ if not file_bytes.startswith(b"%PDF"):
 
 ## 2. 필수 기능 누락
 
-### 비밀번호 찾기 / 초기화
+### ~~비밀번호 찾기 / 초기화~~
 - email 회원이 비밀번호를 잊으면 계정 복구 방법이 없음
 - 이메일로 임시 토큰 발송 → 비밀번호 재설정 플로우 구현 필요
 
-### 계정 삭제 (자기 자신)
-- 개인정보보호법 관점에서 유저가 직접 계정과 데이터를 삭제할 수 있어야 함
-- 현재는 admin만 유저를 삭제할 수 있음
-- `DELETE /auth/me` 엔드포인트 및 프론트엔드 설정 페이지 UI 추가 필요
+### ~~계정 삭제 (자기 자신)~~ ✅
+- ~~개인정보보호법 관점에서 유저가 직접 계정과 데이터를 삭제할 수 있어야 함~~
+- `DELETE /auth/me` 구현 완료: DB 캐스케이드 삭제 + R2 파일 일괄 삭제 + 토큰 블랙리스트 처리
+- 프론트엔드 설정 페이지에 `DeleteAccountSection` 추가 (입력 확인 후 삭제)
 
-### 문서 목록 페이지네이션
+### ~~문서 목록 페이지네이션~~
 - 현재 `select(Document).where(...)` 로 전체 조회
 - 문서가 많아지면 응답 크기와 DB 쿼리 비용이 무제한 증가
 - `limit` / `offset` 또는 커서 기반 페이지네이션 적용 필요
 
-### 하이라이트 / 노트 검색
-- 특정 텍스트를 포함한 하이라이트나 노트를 찾는 방법이 없음
-- PostgreSQL `full-text search` 또는 `ilike` 기반 검색 엔드포인트 추가 필요
+### ~~하이라이트 / 노트 검색~~ ✅
+- `pg_trgm` + GIN 인덱스 기반 `GET /search` 엔드포인트 구현 완료
+- 하이라이트 텍스트(`content->>'text'`) + 노트(`content`) UNION ALL, `similarity()` 관련도 정렬
+- 프론트엔드 `/search` 페이지 및 대시보드 헤더 검색 버튼 추가
 
 ### 이메일 발송 인프라
 - 이메일 인증, 비밀번호 재설정, 가입 환영 메일 등을 보낼 수단이 없음
@@ -95,14 +93,11 @@ if not file_bytes.startswith(b"%PDF"):
   - PR: `pytest` 실행
   - main 머지: 테스트 통과 시 Render/Vercel 자동 배포
 
-### 에러 추적 (Sentry)
-- 500 에러가 발생해도 어디서 터졌는지 알기 어려움
-- Sentry 연동으로 스택 트레이스, 유저 컨텍스트, 발생 빈도 추적 필요
-```python
-# main.py
-import sentry_sdk
-sentry_sdk.init(dsn=settings.SENTRY_DSN, environment=settings.ENVIRONMENT)
-```
+### ~~에러 추적 (Sentry / GlitchTip)~~ ✅
+- GlitchTip(`sentry-sdk[fastapi]`) 연동 완료
+- `before_send`로 4xx 클라이언트 에러 드롭, 5xx만 전송
+- `_sentry_user_context` 미들웨어로 요청마다 `user.id` 자동 첨부
+- `SENTRY_DSN` 비우면 자동 비활성화 (로컬 개발)
 
 ### 구조적 로깅
 - 현재 uvicorn 기본 로그만 있음
@@ -118,7 +113,7 @@ CMD ["sh", "-c", "alembic upgrade head && uvicorn ..."]
 - 멀티 인스턴스 환경에서 동시 실행 시 충돌 가능
 - 마이그레이션을 별도 배포 단계(pre-deploy hook)로 분리 필요
 
-### 데이터베이스 인덱스
+### ~~데이터베이스 인덱스~~
 - 자주 조회되는 컬럼에 인덱스가 없음
 ```python
 # 추가 필요한 인덱스 예시 (migration으로 추가)
@@ -136,20 +131,15 @@ Index("ix_collection_items_collection", CollectionItem.collection_id)
 
 ## 4. 성능
 
-### 캐싱
+### ~~캐싱~~
 - presigned URL은 매 요청마다 R2 API를 새로 호출
 - TTL이 1시간이므로 Redis에 캐시하면 R2 API 호출 횟수 대폭 감소
 - `/settings` 응답도 캐시 후 설정 변경 시 무효화 가능
 
-### 문서 업로드 비동기 처리
-- 현재 업로드 흐름이 동기로 워커를 블로킹
-```python
-# 현재
-file_bytes = await file.read()   # 메모리에 전체 로드
-upload_file(file_bytes, file_key)  # boto3 동기 호출
-```
-- 대용량 파일(50MB) 업로드 시 다른 요청 처리가 지연됨
-- `asyncio.to_thread(upload_file, ...)` 또는 백그라운드 태스크로 전환 필요
+### ~~문서 업로드 비동기 처리~~ ✅
+- `r2_service.py`에 `upload_file_async`, `delete_file_async` 추가 (`asyncio.to_thread` 래퍼)
+- `upload_document`, `delete_document` 엔드포인트에서 async 버전으로 교체
+- 동기 원본(`upload_file`, `delete_file`)은 백그라운드 태스크 등 동기 컨텍스트용으로 유지
 
 ### LLM 번역 타임아웃 처리
 - 번역 SSE 스트림에 타임아웃 설정 없음
@@ -183,3 +173,61 @@ upload_file(file_bytes, file_key)  # boto3 동기 호출
 ### 법적 페이지
 - 서비스 약관(Terms of Service), 개인정보처리방침(Privacy Policy) 페이지 없음
 - 실제 서비스 오픈 전 필수 작성 항목
+
+---
+
+## 별첨 — 현재 구현 상태 (2026-06-08 기준)
+
+### 인증 / 보안
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| Rate Limiting | ✅ | slowapi, IP 기반. login 10/min, signup 5/hour 등 엔드포인트별 차등 적용 |
+| JWT 토큰 무효화 | ✅ | Redis 블랙리스트. logout·계정삭제·refresh rotation 시 구 토큰 hash → TTL 만료까지 블랙리스트 |
+| httpOnly 쿠키 | ✅ | access_token(path=/), refresh_token(path=/api/v1/auth). COOKIE_SECURE·SAMESITE·DOMAIN 환경변수로 로컬/프로덕션 분리 |
+| 파일 검증 | ✅ | Content-Type 헤더 + `%PDF-` magic bytes 이중 검사 |
+| 비밀번호 정책 | ✅ | `PASSWORD_MIN_LENGTH` / `PASSWORD_REQUIRE_LETTER` / `PASSWORD_REQUIRE_DIGIT` config 관리, `validate_password()` 공통 적용 |
+| 이메일 인증 | ✅ | 회원가입 시 Redis 토큰 발급 → 프론트엔드 `/verify-email` 페이지에서 `POST /auth/verify-email` 호출 |
+| Google OAuth | ✅ | state CSRF 보호, httpOnly 쿠키로 토큰 전달 (URL 노출 없음) |
+| 비밀번호 찾기/초기화 | ✅ | `POST /auth/forgot-password` → 이메일 발송 → 프론트엔드 `/reset-password?token=` |
+| 비밀번호 변경 | ✅ | `POST /auth/change-password` (인증 사용자, email provider 전용) |
+| 계정 삭제 | ✅ | `DELETE /auth/me`. DB cascade + R2 파일 일괄 삭제 + 토큰 블랙리스트. 프론트엔드 확인 입력 UI |
+
+### 기능
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| 문서 목록 페이지네이션 | ✅ | cursor-based (`created_at + id` 복합 커서, Base64). 프론트엔드 `useInfiniteQuery` + "더 보기" |
+| 하이라이트/노트 검색 | ✅ | `GET /search`. `pg_trgm` GIN 인덱스, `UNION ALL`, `similarity()` 관련도 정렬. `/search` 페이지 |
+| 이메일 발송 | ✅ | SMTP(Gmail App Password). 인증·비밀번호재설정·웰컴 메일 Jinja2 템플릿 |
+
+### 인프라 / 운영
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| 에러 추적 | ✅ | GlitchTip (`sentry-sdk[fastapi]`). 4xx 드롭, user.id 자동 첨부. `SENTRY_DSN` 비우면 비활성 |
+| DB 마이그레이션 안전성 | ✅ | Render Pre-Deploy Command로 분리 완료. Dockerfile CMD는 uvicorn만 실행 |
+| DB 인덱스 | ✅ | 총 14개. `pg_trgm` GIN 2개 + 커서 복합 인덱스 + doc_user 복합 인덱스 11개 |
+| CI/CD 파이프라인 | ❌ | GitHub Actions 미설정 |
+| 구조적 로깅 | ❌ | uvicorn 기본 로그만 있음 |
+| 백업 전략 | ❌ | Render PostgreSQL 자동 백업 설정 여부 미확인 |
+
+### 성능
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| Presigned URL 캐싱 | ✅ | Redis `presigned_url:{doc_id}`, TTL 3300s (55분). 문서 삭제 시 즉시 무효화 |
+| Settings 캐싱 | ✅ | Redis `settings:{user_id}`, TTL 3600s. 모든 설정 변경 엔드포인트에서 즉시 무효화 |
+| 업로드 비동기 처리 | ✅ | `asyncio.to_thread` 래퍼. 업로드·삭제 모두 이벤트 루프 비블로킹 |
+| LLM 번역 타임아웃 | ✅ | SSE 스트림 타임아웃 미설정 |
+
+### 프로덕트
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| 온보딩 | ❌ | 가입 후 빈 대시보드 |
+| Export 기능 | ❌ | 하이라이트/노트/컬렉션 외부 내보내기 없음 |
+| 공유 기능 | ❌ | read-only 공유 링크 없음 |
+| PDF 썸네일 | ❌ | 대시보드 문서 카드가 텍스트 제목만 표시 |
+| 모바일 대응 | ❌ | 리더 페이지 고정 레이아웃, 모바일 미최적화 |
+| 법적 페이지 | ❌ | 서비스 약관·개인정보처리방침 없음 |

@@ -4,7 +4,7 @@ import type { AxiosError, InternalAxiosRequestConfig } from "axios";
 type RetryableRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  baseURL: process.env.NEXT_PUBLIC_API_URL ?? "/api/v1",
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });
@@ -28,7 +28,7 @@ api.interceptors.response.use(
       try {
         // Refresh token cookie is sent automatically via withCredentials
         await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
+          `${process.env.NEXT_PUBLIC_API_URL ?? "/api/v1"}/auth/refresh`,
           null,
           { withCredentials: true }
         );

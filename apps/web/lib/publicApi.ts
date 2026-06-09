@@ -9,7 +9,7 @@ import axios from "axios";
  *    is never bounced to the login page when a share is missing/disabled.
  */
 export const publicApi = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  baseURL: process.env.NEXT_PUBLIC_API_URL ?? "/api/v1",
   headers: { "Content-Type": "application/json" },
   withCredentials: false,
 });

@@ -224,7 +224,7 @@ export default function SignupPage() {
           </div>
 
           <a
-            href={`${process.env.NEXT_PUBLIC_API_URL}/auth/google`}
+            href={`${process.env.NEXT_PUBLIC_API_URL ?? "/api/v1"}/auth/google`}
             className="w-full flex items-center justify-center gap-3 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-700 transition-colors"
           >
             <GoogleIcon />
