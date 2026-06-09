@@ -185,6 +185,24 @@ export type RenderableStickyNote = Pick<
   "id" | "page" | "x" | "y" | "width" | "content" | "color"
 >;
 
+export type DrawingStrokeColor = "black" | "red" | "blue" | "green" | "yellow";
+
+export interface DrawingStroke {
+  id: string;
+  document_id: string;
+  user_id: string;
+  page: number;
+  points: number[][];
+  color: DrawingStrokeColor;
+  width: number;
+  created_at: string;
+}
+
+export type RenderableDrawingStroke = Pick<
+  DrawingStroke,
+  "id" | "page" | "points" | "color" | "width"
+>;
+
 // ── Read-only sharing ────────────────────────────────────────────────────────
 export interface SharedDocumentMeta {
   title: string;

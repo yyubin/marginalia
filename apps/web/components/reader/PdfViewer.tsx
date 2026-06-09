@@ -5,9 +5,10 @@ import "react-pdf-highlighter/dist/style.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PdfHighlighter, PdfLoader, Highlight, Popup } from "react-pdf-highlighter";
 import type { IHighlight, NewHighlight } from "react-pdf-highlighter";
-import { StickyNote as StickyNoteIcon } from "lucide-react";
+import { Pencil, StickyNote as StickyNoteIcon } from "lucide-react";
 import { useReaderStore } from "@/store/readerStore";
 import StickyNoteLayer from "./StickyNoteLayer";
+import DrawingLayer from "./DrawingLayer";
 // PdfHighlighter는 class component이므로 ref로 viewer 접근 가능
 type PdfHighlighterInstance = InstanceType<typeof PdfHighlighter>;
 type PdfViewerLike = {
@@ -87,7 +88,7 @@ export default function PdfViewer({
   const currentPageRef = useRef(1);
   const onPageChangeRef = useRef(onPageChange);
   const [pdfContainer, setPdfContainer] = useState<HTMLElement | null>(null);
-  const { activeTool, toggleStickyNoteTool } = useReaderStore();
+  const { activeTool, toggleStickyNoteTool, toggleDrawTool } = useReaderStore();
 
   useEffect(() => () => { cleanupPageTracking.current?.(); }, []);
   useEffect(() => {
@@ -437,10 +438,27 @@ export default function PdfViewer({
             >
               <StickyNoteIcon size={14} />
             </button>
+            <button
+              onClick={toggleDrawTool}
+              className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
+                activeTool === "draw"
+                  ? "bg-zinc-900 text-white"
+                  : "hover:bg-gray-100 text-gray-500"
+              }`}
+              title="필기 (PDF 위에 직접 그리기)"
+            >
+              <Pencil size={14} />
+            </button>
           </>
         )}
       </div>
 
+      <DrawingLayer
+        documentId={documentId}
+        pdfContainer={pdfContainer}
+        readOnly={readOnly}
+        shareToken={shareToken}
+      />
       <StickyNoteLayer
         documentId={documentId}
         pdfContainer={pdfContainer}
