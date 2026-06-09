@@ -9,4 +9,5 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# SKIP_MIGRATIONS=1 to skip alembic (local dev where DB is already at head)
+CMD ["sh", "-c", "if [ \"$SKIP_MIGRATIONS\" != \"1\" ]; then alembic upgrade head; fi && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
