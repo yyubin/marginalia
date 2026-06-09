@@ -14,6 +14,7 @@ async def stroke(db, user, document):
         points=POINTS,
         color="black",
         width=2.0,
+        tool="pen",
     )
     db.add(s)
     await db.flush()
@@ -91,7 +92,7 @@ class TestCreateDrawing:
         assert data["points"] == POINTS
         assert data["document_id"] == str(document.id)
 
-    async def test_default_color_and_width(self, client, auth_headers, document):
+    async def test_default_color_width_and_tool(self, client, auth_headers, document):
         response = await client.post(
             f"/api/v1/documents/{document.id}/drawings",
             json={"page": 1, "points": POINTS},
@@ -101,6 +102,37 @@ class TestCreateDrawing:
         data = response.json()
         assert data["color"] == "black"
         assert data["width"] == 2.0
+        assert data["tool"] == "pen"
+
+    async def test_creates_highlighter(self, client, auth_headers, document):
+        response = await client.post(
+            f"/api/v1/documents/{document.id}/drawings",
+            json={"page": 1, "points": POINTS, "tool": "highlighter", "color": "yellow", "width": 12.0},
+            headers=auth_headers,
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["tool"] == "highlighter"
+        assert data["color"] == "yellow"
+        assert data["width"] == 12.0
+
+    async def test_accepts_new_colors(self, client, auth_headers, document):
+        for color in ("orange", "purple"):
+            response = await client.post(
+                f"/api/v1/documents/{document.id}/drawings",
+                json={"page": 1, "points": POINTS, "color": color},
+                headers=auth_headers,
+            )
+            assert response.status_code == 201, f"Expected 201 for color={color}"
+            assert response.json()["color"] == color
+
+    async def test_invalid_tool_returns_422(self, client, auth_headers, document):
+        response = await client.post(
+            f"/api/v1/documents/{document.id}/drawings",
+            json={"page": 1, "points": POINTS, "tool": "marker"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
 
     async def test_invalid_color_returns_422(self, client, auth_headers, document):
         response = await client.post(
@@ -137,7 +169,7 @@ class TestCreateDrawing:
     async def test_width_out_of_range_returns_422(self, client, auth_headers, document):
         response = await client.post(
             f"/api/v1/documents/{document.id}/drawings",
-            json={"page": 1, "points": POINTS, "width": 10.0},
+            json={"page": 1, "points": POINTS, "width": 100.0},
             headers=auth_headers,
         )
         assert response.status_code == 422

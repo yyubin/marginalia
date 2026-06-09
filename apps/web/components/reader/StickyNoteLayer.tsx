@@ -111,9 +111,9 @@ export default function StickyNoteLayer({ documentId, pdfContainer, readOnly = f
         host.style.position = "absolute";
         host.style.inset = "0";
         host.style.pointerEvents = "none"; // notes/overlay opt back in individually
-        // Stack above drawing-layer host (which sets z-index 1) so sticky notes
-        // and the click overlay remain interactive on top of committed strokes.
-        host.style.zIndex = "2";
+        // Stack above drawing-layer host (z:10) so sticky notes and the click
+        // overlay remain interactive on top of committed strokes.
+        host.style.zIndex = "11";
         hostsRef.current.set(pageEl, host);
       }
       if (host.parentNode !== pageEl) pageEl.appendChild(host);

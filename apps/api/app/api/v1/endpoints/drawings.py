@@ -68,6 +68,7 @@ async def create_drawing(
         points=body.points,
         color=body.color,
         width=body.width,
+        tool=body.tool,
     )
     db.add(stroke)
     await db.commit()

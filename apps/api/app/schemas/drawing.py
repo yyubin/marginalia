@@ -3,7 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-VALID_COLORS = {"black", "red", "blue", "green", "yellow"}
+VALID_COLORS = {"black", "red", "orange", "yellow", "green", "blue", "purple"}
+VALID_TOOLS = {"pen", "highlighter"}
 MAX_POINTS_PER_STROKE = 1000
 
 
@@ -11,13 +12,21 @@ class DrawingStrokeCreate(BaseModel):
     page: int = Field(ge=1)
     points: list[list[float]]
     color: str = "black"
-    width: float = Field(default=2.0, ge=1.0, le=6.0)
+    width: float = Field(default=2.0, ge=1.0, le=24.0)
+    tool: str = "pen"
 
     @field_validator("color")
     @classmethod
     def validate_color(cls, v: str) -> str:
         if v not in VALID_COLORS:
             raise ValueError(f"color must be one of {VALID_COLORS}")
+        return v
+
+    @field_validator("tool")
+    @classmethod
+    def validate_tool(cls, v: str) -> str:
+        if v not in VALID_TOOLS:
+            raise ValueError(f"tool must be one of {VALID_TOOLS}")
         return v
 
     @field_validator("points")
@@ -48,6 +57,7 @@ class DrawingStrokeResponse(BaseModel):
     points: list[list[float]]
     color: str
     width: float
+    tool: str
     created_at: datetime
 
 
@@ -59,3 +69,4 @@ class SharedDrawingStrokeResponse(BaseModel):
     points: list[list[float]]
     color: str
     width: float
+    tool: str

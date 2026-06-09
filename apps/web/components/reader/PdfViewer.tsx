@@ -9,6 +9,7 @@ import { Pencil, StickyNote as StickyNoteIcon } from "lucide-react";
 import { useReaderStore } from "@/store/readerStore";
 import StickyNoteLayer from "./StickyNoteLayer";
 import DrawingLayer from "./DrawingLayer";
+import DrawingToolbar from "./DrawingToolbar";
 // PdfHighlighter는 class component이므로 ref로 viewer 접근 가능
 type PdfHighlighterInstance = InstanceType<typeof PdfHighlighter>;
 type PdfViewerLike = {
@@ -353,6 +354,11 @@ export default function PdfViewer({
 
   return (
     <div className="flex-1 overflow-auto relative" style={{ background: "#e5e7eb" }}>
+      {!readOnly && activeTool === "draw" && (
+        <div className="fixed bottom-16 left-1/2 lg:left-[calc((100vw-20rem)/2)] -translate-x-1/2 z-[9999]">
+          <DrawingToolbar documentId={documentId} currentPage={currentPage} />
+        </div>
+      )}
       <div className="fixed bottom-4 left-1/2 lg:left-[calc((100vw-20rem)/2)] -translate-x-1/2 z-[9999] flex items-center gap-1 bg-white border shadow-lg rounded-full px-3 py-1">
         {totalPages > 0 && (
           <>

@@ -2,17 +2,18 @@
 
 import { useEffect, useRef } from "react";
 
-import type { DrawingStrokeColor } from "@/types";
-import { DRAWING_COLOR_HEX } from "./DrawingSvg";
+import type { DrawingStrokeColor, DrawingTool } from "@/types";
+import { DRAWING_COLOR_HEX, TOOL_LINECAP, TOOL_OPACITY } from "./DrawingSvg";
 
 interface Props {
   pageEl: HTMLElement;
+  tool: DrawingTool;
   color: DrawingStrokeColor;
   width: number;
   onStrokeComplete: (points: number[][]) => void;
 }
 
-export default function DrawingCanvas({ pageEl, color, width, onStrokeComplete }: Props) {
+export default function DrawingCanvas({ pageEl, tool, color, width, onStrokeComplete }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
   const pointsRef = useRef<number[][]>([]);
@@ -35,8 +36,6 @@ export default function DrawingCanvas({ pageEl, color, width, onStrokeComplete }
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
       }
     };
     sync();
@@ -64,6 +63,9 @@ export default function DrawingCanvas({ pageEl, color, width, onStrokeComplete }
     if (ctx) {
       ctx.strokeStyle = DRAWING_COLOR_HEX[color] ?? "#111";
       ctx.lineWidth = width;
+      ctx.globalAlpha = TOOL_OPACITY[tool] ?? 1;
+      ctx.lineCap = TOOL_LINECAP[tool] ?? "round";
+      ctx.lineJoin = tool === "highlighter" ? "miter" : "round";
       ctx.beginPath();
       ctx.moveTo(x, y);
     }
@@ -101,7 +103,6 @@ export default function DrawingCanvas({ pageEl, color, width, onStrokeComplete }
     pointsRef.current = [];
     lastRef.current = null;
 
-    // Clear canvas; committed SVG layer takes over visually.
     const ctx = canvas.getContext("2d");
     if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
 

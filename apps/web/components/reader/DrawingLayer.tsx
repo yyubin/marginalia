@@ -11,10 +11,12 @@ import { useReaderStore } from "@/store/readerStore";
 import type {
   DrawingStroke as DrawingStrokeType,
   DrawingStrokeColor,
+  DrawingTool,
   RenderableDrawingStroke,
 } from "@/types";
 
 import DrawingCanvas from "./DrawingCanvas";
+import DrawingEraser from "./DrawingEraser";
 import DrawingSvg from "./DrawingSvg";
 
 interface Props {
@@ -26,12 +28,17 @@ interface Props {
 
 export default function DrawingLayer({ documentId, pdfContainer, readOnly = false, shareToken }: Props) {
   const activeTool = useReaderStore((s) => s.activeTool);
-  const color = useDrawingStore((s) => s.color);
-  const width = useDrawingStore((s) => s.width);
+  const tool = useDrawingStore((s) => s.tool);
+  const pen = useDrawingStore((s) => s.pen);
+  const highlighter = useDrawingStore((s) => s.highlighter);
+  // For the eraser branch this value is unused; default to pen so the type is
+  // always defined.
+  const current = tool === "highlighter" ? highlighter : pen;
   const queryClient = useQueryClient();
 
   const [pageElements, setPageElements] = useState<Map<number, HTMLElement>>(new Map());
   const [hosts, setHosts] = useState<Map<HTMLElement, HTMLDivElement>>(new Map());
+  const [hoveredIds, setHoveredIds] = useState<Set<string>>(new Set());
   const hostsRef = useRef<Map<HTMLElement, HTMLDivElement>>(new Map());
 
   // ── Data fetch ─────────────────────────────────────────────────────────────
@@ -49,13 +56,39 @@ export default function DrawingLayer({ documentId, pdfContainer, readOnly = fals
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const createMutation = useMutation({
-    mutationFn: (data: { page: number; points: number[][]; color: DrawingStrokeColor; width: number }) =>
-      api.post(`/documents/${documentId}/drawings`, data).then((r) => r.data),
+    mutationFn: (data: {
+      page: number;
+      points: number[][];
+      color: DrawingStrokeColor;
+      width: number;
+      tool: DrawingTool;
+    }) => api.post(`/documents/${documentId}/drawings`, data).then((r) => r.data),
     onSuccess: (stroke: DrawingStrokeType) => {
       queryClient.setQueryData<DrawingStrokeType[]>(["drawings", documentId], (prev = []) => [
         ...prev,
         stroke,
       ]);
+    },
+  });
+
+  // Batch delete — optimistically removes from cache first so the UI is snappy,
+  // then fires the requests in parallel. If a delete fails, the next refetch
+  // will reconcile.
+  const deleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => api.delete(`/drawings/${id}`)));
+      return ids;
+    },
+    onMutate: (ids: string[]) => {
+      const prev = queryClient.getQueryData<DrawingStrokeType[]>(["drawings", documentId]);
+      const idSet = new Set(ids);
+      queryClient.setQueryData<DrawingStrokeType[]>(["drawings", documentId], (curr = []) =>
+        curr.filter((s) => !idSet.has(s.id)),
+      );
+      return { prev };
+    },
+    onError: (_err, _ids, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["drawings", documentId], ctx.prev);
     },
   });
 
@@ -81,9 +114,10 @@ export default function DrawingLayer({ documentId, pdfContainer, readOnly = fals
         host.style.position = "absolute";
         host.style.inset = "0";
         host.style.pointerEvents = "none";
-        // Lower than sticky-layer (which is set to 2) so committed strokes
-        // render under sticky notes; the canvas opts back into events itself.
-        host.style.zIndex = "1";
+        // Above pdf.js .textLayer text spans (z:1) and react-pdf-highlighter
+        // selection overlay so the canvas catches pointer events; sticky-layer
+        // sits one level higher so its notes/overlay remain interactive on top.
+        host.style.zIndex = "10";
         hostsRef.current.set(pageEl, host);
       }
       if (host.parentNode !== pageEl) pageEl.appendChild(host);
@@ -135,6 +169,23 @@ export default function DrawingLayer({ documentId, pdfContainer, readOnly = fals
 
   const drawToolActive = !readOnly && activeTool === "draw";
 
+  // ── Cursor on each page element (mirrors sticky pattern) ───────────────────
+  // Setting cursor on the page itself ensures the crosshair persists even
+  // before the canvas has finished mounting / resizing, and as a fallback if
+  // a pdf.js child element (e.g. text span with cursor:text) somehow ends up
+  // on top in a stacking edge case.
+  useEffect(() => {
+    if (!drawToolActive) return;
+    pageElements.forEach((el) => {
+      el.style.cursor = "crosshair";
+    });
+    return () => {
+      pageElements.forEach((el) => {
+        el.style.cursor = "";
+      });
+    };
+  }, [drawToolActive, pageElements]);
+
   // ── Group strokes by page ──────────────────────────────────────────────────
   const strokesByPage = new Map<number, RenderableDrawingStroke[]>();
   strokes.forEach((s) => {
@@ -151,17 +202,32 @@ export default function DrawingLayer({ documentId, pdfContainer, readOnly = fals
         const pageStrokes = strokesByPage.get(pageNum) ?? [];
         return createPortal(
           <>
-            <DrawingSvg strokes={pageStrokes} />
-            {drawToolActive && (
+            <DrawingSvg strokes={pageStrokes} hoveredIds={hoveredIds} />
+            {drawToolActive && (tool === "eraser" ? (
+              <DrawingEraser
+                pageEl={pageEl}
+                strokes={pageStrokes}
+                hoveredIds={hoveredIds}
+                onHover={setHoveredIds}
+                onErase={(ids) => deleteMutation.mutate(ids)}
+              />
+            ) : (
               <DrawingCanvas
                 pageEl={pageEl}
-                color={color}
-                width={width}
+                tool={tool}
+                color={current.color}
+                width={current.width}
                 onStrokeComplete={(points) => {
-                  createMutation.mutate({ page: pageNum, points, color, width });
+                  createMutation.mutate({
+                    page: pageNum,
+                    points,
+                    color: current.color,
+                    width: current.width,
+                    tool,
+                  });
                 }}
               />
-            )}
+            ))}
           </>,
           host,
           `drawing-${pageNum}`

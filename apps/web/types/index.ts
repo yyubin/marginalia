@@ -185,7 +185,20 @@ export type RenderableStickyNote = Pick<
   "id" | "page" | "x" | "y" | "width" | "content" | "color"
 >;
 
-export type DrawingStrokeColor = "black" | "red" | "blue" | "green" | "yellow";
+export type DrawingStrokeColor =
+  | "black"
+  | "red"
+  | "orange"
+  | "yellow"
+  | "green"
+  | "blue"
+  | "purple";
+
+// Persisted on each stroke. Eraser is a UI mode, never stored.
+export type DrawingTool = "pen" | "highlighter";
+
+// Active tool in the drawing toolbar. Eraser does not draw — it removes strokes.
+export type DrawingToolMode = DrawingTool | "eraser";
 
 export interface DrawingStroke {
   id: string;
@@ -195,12 +208,13 @@ export interface DrawingStroke {
   points: number[][];
   color: DrawingStrokeColor;
   width: number;
+  tool: DrawingTool;
   created_at: string;
 }
 
 export type RenderableDrawingStroke = Pick<
   DrawingStroke,
-  "id" | "page" | "points" | "color" | "width"
+  "id" | "page" | "points" | "color" | "width" | "tool"
 >;
 
 // ── Read-only sharing ────────────────────────────────────────────────────────

@@ -18,4 +18,5 @@ class DrawingStroke(Base):
     points: Mapped[list] = mapped_column(JSONB, nullable=False)
     color: Mapped[str] = mapped_column(String(20), nullable=False, default="black")
     width: Mapped[float] = mapped_column(Float, nullable=False, default=2.0)
+    tool: Mapped[str] = mapped_column(String(20), nullable=False, default="pen")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
