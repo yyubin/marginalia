@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,15 +33,24 @@ async def _get_owned_note(db: AsyncSession, note_id: uuid.UUID, user_id: uuid.UU
 @router.get("/documents/{doc_id}/sticky-notes", response_model=list[StickyNoteResponse])
 async def list_sticky_notes(
     doc_id: uuid.UUID,
+    page_from: int = Query(default=1, ge=1),
+    limit: int | None = Query(default=None, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     await _assert_doc_owner(db, doc_id, current_user.id)
-    result = await db.execute(
+    stmt = (
         select(StickyNote)
-        .where(StickyNote.document_id == doc_id, StickyNote.user_id == current_user.id)
+        .where(
+            StickyNote.document_id == doc_id,
+            StickyNote.user_id == current_user.id,
+            StickyNote.page >= page_from,
+        )
         .order_by(StickyNote.page, StickyNote.created_at)
     )
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    result = await db.execute(stmt)
     return result.scalars().all()
 
 

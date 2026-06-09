@@ -5,14 +5,17 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import Integer, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.constants import ANNOTATIONS_PAGE_SIZE
 from app.core.database import get_db
 from app.core.rate_limit import limiter
 from app.core.redis_client import redis_get, redis_set
+from app.models.drawing_stroke import DrawingStroke
 from app.models.highlight import Highlight
 from app.models.sticky_note import StickyNote
 from app.schemas.document import DocumentUrlResponse
 from app.schemas.share import (
     SharedDocumentMeta,
+    SharedDrawingStrokeResponse,
     SharedHighlightResponse,
     SharedStickyNoteResponse,
 )
@@ -95,12 +98,43 @@ async def list_shared_sticky_notes(
     request: Request,
     response: Response,
     token: str,
+    page_from: int = Query(default=1, ge=1),
+    limit: int = Query(default=ANNOTATIONS_PAGE_SIZE, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ):
     share, doc = await resolve_share(db, token)
     result = await db.execute(
         select(StickyNote)
-        .where(StickyNote.document_id == doc.id, StickyNote.user_id == share.user_id)
+        .where(
+            StickyNote.document_id == doc.id,
+            StickyNote.user_id == share.user_id,
+            StickyNote.page >= page_from,
+        )
         .order_by(StickyNote.page, StickyNote.created_at)
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+@router.get("/{token}/drawings", response_model=list[SharedDrawingStrokeResponse])
+@limiter.limit("60/minute")
+async def list_shared_drawings(
+    request: Request,
+    response: Response,
+    token: str,
+    page_from: int = Query(default=1, ge=1),
+    limit: int = Query(default=ANNOTATIONS_PAGE_SIZE, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    share, doc = await resolve_share(db, token)
+    result = await db.execute(
+        select(DrawingStroke)
+        .where(
+            DrawingStroke.document_id == doc.id,
+            DrawingStroke.user_id == share.user_id,
+            DrawingStroke.page >= page_from,
+        )
+        .order_by(DrawingStroke.page, DrawingStroke.created_at)
+        .limit(limit)
     )
     return result.scalars().all()

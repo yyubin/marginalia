@@ -55,3 +55,15 @@ class SharedStickyNoteResponse(BaseModel):
     content: str
     color: str
     created_at: datetime
+
+
+class SharedDrawingStrokeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    page: int
+    points: list[list[float]]
+    color: str
+    width: float
+    tool: str
+    created_at: datetime

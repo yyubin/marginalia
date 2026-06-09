@@ -34,6 +34,7 @@ async def _get_owned_stroke(db: AsyncSession, stroke_id: uuid.UUID, user_id: uui
 async def list_drawings(
     doc_id: uuid.UUID,
     page: int | None = Query(default=None, ge=1),
+    limit: int | None = Query(default=None, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -45,6 +46,8 @@ async def list_drawings(
     )
     if page is not None:
         stmt = stmt.where(DrawingStroke.page == page)
+    if limit is not None:
+        stmt = stmt.limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
 
