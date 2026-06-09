@@ -2,8 +2,11 @@
 
 import { useEffect, useRef } from "react";
 
+import { rdpSimplify } from "@/lib/drawingGeometry";
 import type { DrawingStrokeColor, DrawingTool } from "@/types";
 import { DRAWING_COLOR_HEX, TOOL_LINECAP, TOOL_OPACITY } from "./DrawingSvg";
+
+const RDP_EPSILON: Record<DrawingTool, number> = { pen: 0.3, highlighter: 0.5 };
 
 interface Props {
   pageEl: HTMLElement;
@@ -99,13 +102,14 @@ export default function DrawingCanvas({ pageEl, tool, color, width, onStrokeComp
     const canvas = canvasRef.current!;
     try { canvas.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
 
-    const points = pointsRef.current.slice();
+    const raw = pointsRef.current.slice();
     pointsRef.current = [];
     lastRef.current = null;
 
     const ctx = canvas.getContext("2d");
     if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    const points = rdpSimplify(raw, RDP_EPSILON[tool]);
     if (points.length >= 2) onStrokeComplete(points);
   }
 
