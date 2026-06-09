@@ -17,6 +17,7 @@ class Document(Base):
     file_key: Mapped[str] = mapped_column(Text, nullable=False)
     file_size: Mapped[int | None] = mapped_column(BigInteger)
     page_count: Mapped[int | None] = mapped_column(Integer)
+    thumbnail_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_opened: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

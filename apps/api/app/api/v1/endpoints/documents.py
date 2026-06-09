@@ -1,8 +1,9 @@
+import asyncio
 import base64
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,20 +11,26 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user, get_verified_user
 from app.core.rate_limit import limiter
+from app.core.redis_client import redis_delete, redis_get, redis_set
 from app.models.document import Document
 from app.models.user import User
 from app.models.user_settings import UserSettings
-from app.schemas.document import DocumentListResponse, DocumentResponse, DocumentUrlResponse
-from app.core.redis_client import redis_delete, redis_get, redis_set
+from app.schemas.document import DocumentListResponse, DocumentResponse, DocumentUpdate, DocumentUrlResponse
 from app.services.r2_service import delete_file_async, generate_presigned_url, upload_file_async
+from app.services.thumbnail_service import generate_and_upload_thumbnail
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 _PRESIGNED_TTL = 3300  # 55 min — R2 URL expires in 60 min, 5 min safety buffer
+_THUMB_PRESIGNED_TTL = 3300
 
 
 def _presigned_cache_key(doc_id: uuid.UUID) -> str:
     return f"presigned_url:{doc_id}"
+
+
+def _thumb_cache_key(doc_id: uuid.UUID) -> str:
+    return f"thumbnail_url:{doc_id}"
 
 
 def _encode_cursor(created_at: datetime, doc_id: uuid.UUID) -> str:
@@ -38,6 +45,18 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
         return datetime.fromisoformat(ts_str), uuid.UUID(id_str)
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor")
+
+
+async def _to_response(doc: Document) -> DocumentResponse:
+    """Build DocumentResponse, resolving thumbnail_key → presigned URL if present."""
+    thumb_url = None
+    if doc.thumbnail_key:
+        cache_key = _thumb_cache_key(doc.id)
+        thumb_url = await redis_get(cache_key)
+        if not thumb_url:
+            thumb_url = generate_presigned_url(doc.thumbnail_key, 3600)
+            await redis_set(cache_key, thumb_url, ttl_seconds=_THUMB_PRESIGNED_TTL)
+    return DocumentResponse.model_validate(doc).model_copy(update={"thumbnail_url": thumb_url})
 
 
 @router.get("", response_model=DocumentListResponse)
@@ -64,7 +83,8 @@ async def list_documents(
 
     next_cursor = _encode_cursor(items[-1].created_at, items[-1].id) if has_more else None
 
-    return DocumentListResponse(items=items, next_cursor=next_cursor, has_more=has_more)
+    response_items = await asyncio.gather(*[_to_response(item) for item in items])
+    return DocumentListResponse(items=list(response_items), next_cursor=next_cursor, has_more=has_more)
 
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -72,6 +92,7 @@ async def list_documents(
 async def upload_document(
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_verified_user),
@@ -113,7 +134,10 @@ async def upload_document(
     db.add(doc)
     await db.commit()
     await db.refresh(doc)
-    return doc
+
+    background_tasks.add_task(generate_and_upload_thumbnail, doc.id, current_user.id, file_bytes)
+
+    return await _to_response(doc)
 
 
 @router.get("/{doc_id}", response_model=DocumentResponse)
@@ -123,7 +147,21 @@ async def get_document(
     current_user: User = Depends(get_current_user),
 ):
     doc = await _get_owned_doc(db, doc_id, current_user.id)
-    return doc
+    return await _to_response(doc)
+
+
+@router.patch("/{doc_id}", response_model=DocumentResponse)
+async def update_document(
+    doc_id: uuid.UUID,
+    body: DocumentUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    doc = await _get_owned_doc(db, doc_id, current_user.id)
+    doc.title = body.title
+    await db.commit()
+    await db.refresh(doc)
+    return await _to_response(doc)
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -135,6 +173,9 @@ async def delete_document(
     doc = await _get_owned_doc(db, doc_id, current_user.id)
     await redis_delete(_presigned_cache_key(doc_id))
     await delete_file_async(doc.file_key)
+    if doc.thumbnail_key:
+        await redis_delete(_thumb_cache_key(doc_id))
+        await delete_file_async(doc.thumbnail_key)
     await db.delete(doc)
     await db.commit()
 

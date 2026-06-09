@@ -46,6 +46,7 @@ export interface Document {
   file_key: string;
   file_size: number | null;
   page_count: number | null;
+  thumbnail_url: string | null;
   last_opened: string | null;
   created_at: string;
 }

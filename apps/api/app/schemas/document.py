@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DocumentResponse(BaseModel):
@@ -10,6 +10,7 @@ class DocumentResponse(BaseModel):
     file_key: str
     file_size: int | None
     page_count: int | None
+    thumbnail_url: str | None = None
     last_opened: datetime | None
     created_at: datetime
 
@@ -25,3 +26,7 @@ class DocumentListResponse(BaseModel):
 class DocumentUrlResponse(BaseModel):
     url: str
     expires_in: int
+
+
+class DocumentUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=500)

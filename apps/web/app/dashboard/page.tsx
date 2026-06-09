@@ -2,11 +2,76 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { InfiniteData, useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Document, DocumentListResponse, User, UserSettings } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Footer } from "@/components/ui/footer";
+
+// ── Inline title editor ───────────────────────────────────────────────────────
+
+function DocumentTitleEditor({
+  doc,
+  onRename,
+}: {
+  doc: Document;
+  onRename: (title: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(doc.title);
+
+  function commit() {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== doc.title) onRename(trimmed);
+    else setDraft(doc.title);
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") { setEditing(false); setDraft(doc.title); }
+        }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full text-sm font-medium border-b border-zinc-400 outline-none bg-transparent py-0.5"
+        maxLength={500}
+      />
+    );
+  }
+
+  return (
+    <h3
+      onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+      title="클릭하여 제목 편집"
+      className="font-medium text-sm truncate cursor-text hover:text-zinc-500 transition-colors"
+    >
+      {doc.title}
+    </h3>
+  );
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+function patchTitleInPages(
+  old: InfiniteData<DocumentListResponse> | undefined,
+  id: string,
+  title: string,
+): InfiniteData<DocumentListResponse> | undefined {
+  if (!old) return old;
+  return {
+    ...old,
+    pages: old.pages.map((page) => ({
+      ...page,
+      items: page.items.map((d) => (d.id === id ? { ...d, title } : d)),
+    })),
+  };
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -68,12 +133,27 @@ export default function DashboardPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents"] }),
   });
 
+  const renameMutation = useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) =>
+      api.patch(`/documents/${id}`, { title }).then((r) => r.data as Document),
+    onMutate: async ({ id, title }) => {
+      await queryClient.cancelQueries({ queryKey: ["documents"] });
+      const prev = queryClient.getQueryData<InfiniteData<DocumentListResponse>>(["documents"]);
+      queryClient.setQueryData(["documents"], patchTitleInPages(prev, id, title));
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["documents"], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["documents"] }),
+  });
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadError(null);
     uploadMutation.mutate(file);
-    e.target.value = ""; // 같은 파일 재선택 허용
+    e.target.value = "";
   }
 
   async function handleLogout() {
@@ -143,18 +223,41 @@ export default function DashboardPage() {
           {documents?.map((doc) => (
             <div
               key={doc.id}
-              className="bg-white border rounded-xl p-5 hover:shadow-md transition-shadow cursor-pointer group"
+              className="bg-white border rounded-xl p-5 hover:shadow-md transition-shadow group"
             >
-              <div onClick={() => router.push(`/reader/${doc.id}`)}>
-                <div className="h-32 bg-gray-100 rounded-lg mb-3 flex items-center justify-center">
-                  <span className="text-4xl">📄</span>
-                </div>
-                <h3 className="font-medium text-sm truncate">{doc.title}</h3>
-                <p className="text-xs text-gray-400 mt-1">
-                  {doc.file_size ? `${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : "—"}
-                  {doc.last_opened && ` · 최근 열람: ${new Date(doc.last_opened).toLocaleDateString("ko-KR")}`}
-                </p>
+              {/* 썸네일 — 클릭 시 리더로 이동 */}
+              <div
+                className="h-36 bg-gray-100 rounded-lg mb-3 overflow-hidden cursor-pointer"
+                onClick={() => router.push(`/reader/${doc.id}`)}
+              >
+                {doc.thumbnail_url ? (
+                  <img
+                    src={doc.thumbnail_url}
+                    alt={doc.title}
+                    className="w-full h-full object-cover object-top"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <span className="text-4xl">📄</span>
+                  </div>
+                )}
               </div>
+
+              {/* 제목 — 클릭 시 인라인 편집 */}
+              <DocumentTitleEditor
+                doc={doc}
+                onRename={(title) => renameMutation.mutate({ id: doc.id, title })}
+              />
+
+              {/* 메타 정보 — 클릭 시 리더로 이동 */}
+              <p
+                className="text-xs text-gray-400 mt-1 cursor-pointer"
+                onClick={() => router.push(`/reader/${doc.id}`)}
+              >
+                {doc.file_size ? `${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : "—"}
+                {doc.last_opened && ` · 최근 열람: ${new Date(doc.last_opened).toLocaleDateString("ko-KR")}`}
+              </p>
+
               <button
                 className="mt-3 text-xs text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={(e) => {

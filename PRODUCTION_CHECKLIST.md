@@ -141,7 +141,7 @@ Index("ix_collection_items_collection", CollectionItem.collection_id)
 - `upload_document`, `delete_document` 엔드포인트에서 async 버전으로 교체
 - 동기 원본(`upload_file`, `delete_file`)은 백그라운드 태스크 등 동기 컨텍스트용으로 유지
 
-### LLM 번역 타임아웃 처리
+### ~~LLM 번역 타임아웃 처리~~
 - 번역 SSE 스트림에 타임아웃 설정 없음
 - LLM API가 응답 없이 멈추면 커넥션이 계속 점유됨
 - `asyncio.wait_for`로 타임아웃 및 클라이언트 재시도 로직 추가 필요
@@ -158,7 +158,7 @@ Index("ix_collection_items_collection", CollectionItem.collection_id)
 - 하이라이트/노트/컬렉션을 외부로 내보낼 방법이 없음
 - Markdown, JSON, PDF 어노테이션 등 형식으로 export 지원 필요
 
-### 공유 기능
+### ~~공유 기능~~
 - 컬렉션이나 하이라이트를 다른 사람과 공유할 수 없음
 - read-only 공유 링크 생성 기능 추가 고려
 
