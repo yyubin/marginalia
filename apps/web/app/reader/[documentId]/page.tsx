@@ -15,6 +15,7 @@ import HelpDrawer from "@/components/onboarding/HelpDrawer";
 import { useHighlightStore } from "@/store/highlightStore";
 import { useBookmarkStore } from "@/store/bookmarkStore";
 import { useReaderStore } from "@/store/readerStore";
+import { useSchemeStore } from "@/store/schemeStore";
 import SchemePanel from "@/components/reader/SchemePanel";
 import NotesPanel from "@/components/reader/NotesPanel";
 import TranslatePanel from "@/components/reader/TranslatePanel";
@@ -31,10 +32,19 @@ export default function ReaderPage() {
   const queryClient = useQueryClient();
   const { highlights, setHighlights, addHighlight, selectHighlight, updateHighlight, removeHighlight } = useHighlightStore();
   const setActiveTool = useReaderStore((s) => s.setActiveTool);
+  const clearScheme = useSchemeStore((s) => s.clear);
 
   // Reset tool mode when leaving reader
   useEffect(() => () => setActiveTool("select"), [setActiveTool]);
   const { setBookmarks } = useBookmarkStore();
+
+  // 문서가 바뀔 때 이전 문서의 스토어 데이터를 즉시 초기화
+  useEffect(() => {
+    setHighlights([]);
+    selectHighlight(null);
+    clearScheme();
+    setBookmarks([]);
+  }, [documentId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [translateTarget, setTranslateTarget] = useState<TranslateTarget | null>(null);
   const [loadedHighlightsDocumentId, setLoadedHighlightsDocumentId] = useState<string | null>(null);
   const [scrollTarget, setScrollTarget] = useState<{ highlight: AppHighlight; nonce: number } | null>(null);
