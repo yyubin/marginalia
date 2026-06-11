@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import type { Document, DocumentListResponse, User, UserSettings } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Footer } from "@/components/ui/footer";
+import ExportModal from "@/components/ExportModal";
 
 // ── Inline title editor ───────────────────────────────────────────────────────
 
@@ -109,6 +110,7 @@ export default function DashboardPage() {
   const maxDocuments = settings?.max_documents ?? 3;
 
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [exportTarget, setExportTarget] = useState<{ id: string; title: string } | null>(null);
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => {
@@ -258,15 +260,26 @@ export default function DashboardPage() {
                 {doc.last_opened && ` · 최근 열람: ${new Date(doc.last_opened).toLocaleDateString("ko-KR")}`}
               </p>
 
-              <button
-                className="mt-3 text-xs text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirm("삭제하시겠습니까?")) deleteMutation.mutate(doc.id);
-                }}
-              >
-                삭제
-              </button>
+              <div className="mt-3 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  className="text-xs text-gray-400 hover:text-gray-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExportTarget({ id: doc.id, title: doc.title });
+                  }}
+                >
+                  내보내기
+                </button>
+                <button
+                  className="text-xs text-red-400 hover:text-red-600 ml-auto"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm("삭제하시겠습니까?")) deleteMutation.mutate(doc.id);
+                  }}
+                >
+                  삭제
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -285,6 +298,14 @@ export default function DashboardPage() {
       </main>
 
       <Footer />
+
+      {exportTarget && (
+        <ExportModal
+          documentId={exportTarget.id}
+          documentTitle={exportTarget.title}
+          onClose={() => setExportTarget(null)}
+        />
+      )}
     </div>
   );
 }

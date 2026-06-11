@@ -9,6 +9,7 @@ import axios from "axios";
 import type { NewHighlight } from "react-pdf-highlighter";
 
 import { api } from "@/lib/api";
+import ExportModal from "@/components/ExportModal";
 import { useHighlightStore } from "@/store/highlightStore";
 import { useBookmarkStore } from "@/store/bookmarkStore";
 import { useReaderStore } from "@/store/readerStore";
@@ -43,6 +44,8 @@ export default function ReaderPage() {
   const loadedUntilPageRef = useRef(0); // 마지막으로 로드한 PDF 페이지 번호
   const isLoadingMoreRef = useRef(false);
   const pageRestoredRef = useRef(false);
+
+  const [exportOpen, setExportOpen] = useState(false);
 
   const [panelSide, setPanelSide] = useState<"left" | "right">(() => {
     if (typeof window === "undefined") return "right";
@@ -253,6 +256,12 @@ export default function ReaderPage() {
         </button>
         <h1 className="text-sm font-semibold truncate flex-1">{docTitle}</h1>
         <button
+          onClick={() => setExportOpen(true)}
+          className="px-2.5 py-1 text-xs text-gray-500 border rounded-lg hover:bg-gray-50 transition-colors shrink-0"
+        >
+          내보내기
+        </button>
+        <button
           onClick={togglePanelSide}
           className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
           title={panelSide === "right" ? "패널을 왼쪽으로" : "패널을 오른쪽으로"}
@@ -260,6 +269,14 @@ export default function ReaderPage() {
           {panelSide === "right" ? <PanelLeft size={16} /> : <PanelRight size={16} />}
         </button>
       </header>
+
+      {exportOpen && (
+        <ExportModal
+          documentId={documentId}
+          documentTitle={docTitle}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {panelSide === "left" && (

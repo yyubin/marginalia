@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     collections,
     documents,
     drawings,
+    export,
     highlights,
     notes,
     search,
@@ -30,3 +31,4 @@ router.include_router(search.router)
 router.include_router(sticky_notes.router)
 router.include_router(drawings.router)
 router.include_router(share.router)
+router.include_router(export.router)
