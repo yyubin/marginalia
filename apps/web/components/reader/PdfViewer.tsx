@@ -445,6 +445,7 @@ export default function PdfViewer({
               <StickyNoteIcon size={14} />
             </button>
             <button
+              data-tour="drawing-tool"
               onClick={toggleDrawTool}
               className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors ${
                 activeTool === "draw"

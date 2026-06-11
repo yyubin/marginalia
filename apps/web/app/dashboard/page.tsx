@@ -8,6 +8,10 @@ import type { Document, DocumentListResponse, User, UserSettings } from "@/types
 import { Button } from "@/components/ui/button";
 import { Footer } from "@/components/ui/footer";
 import ExportModal from "@/components/ExportModal";
+import WelcomeModal from "@/components/onboarding/WelcomeModal";
+import HelpDrawer from "@/components/onboarding/HelpDrawer";
+
+const WELCOME_KEY = "onboarding_welcome_v1";
 
 // ── Inline title editor ───────────────────────────────────────────────────────
 
@@ -111,6 +115,22 @@ export default function DashboardPage() {
 
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [exportTarget, setExportTarget] = useState<{ id: string; title: string } | null>(null);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+
+  useEffect(() => {
+    if (!localStorage.getItem(WELCOME_KEY)) setShowWelcome(true);
+  }, []);
+
+  function dismissWelcome() {
+    localStorage.setItem(WELCOME_KEY, "seen");
+    setShowWelcome(false);
+  }
+
+  function handleWelcomeUpload() {
+    dismissWelcome();
+    fileInputRef.current?.click();
+  }
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => {
@@ -202,6 +222,13 @@ export default function DashboardPage() {
               관리자
             </Button>
           )}
+          <button
+            onClick={() => setShowHelp(true)}
+            title="도움말"
+            className="w-8 h-8 flex items-center justify-center rounded-full border text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors text-sm font-medium"
+          >
+            ?
+          </button>
           <Button variant="outline" onClick={handleLogout}>
             로그아웃
           </Button>
@@ -306,6 +333,12 @@ export default function DashboardPage() {
           onClose={() => setExportTarget(null)}
         />
       )}
+
+      {showWelcome && (
+        <WelcomeModal onClose={dismissWelcome} onStartUpload={handleWelcomeUpload} />
+      )}
+
+      <HelpDrawer open={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   );
 }

@@ -158,7 +158,7 @@ export default function SchemePanel({ documentId, onHighlightClick }: Props) {
   }
 
   return (
-    <div className="flex flex-col border-b" style={{ maxHeight: "50%" }}>
+    <div data-tour="scheme-panel" className="flex flex-col border-b" style={{ maxHeight: "50%" }}>
       <div className="px-4 py-3 border-b flex items-center justify-between">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold">스킴패널</h2>
@@ -168,7 +168,7 @@ export default function SchemePanel({ documentId, onHighlightClick }: Props) {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div data-tour="scheme-copy" className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={copyAll}

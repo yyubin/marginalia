@@ -10,6 +10,8 @@ import type { NewHighlight } from "react-pdf-highlighter";
 
 import { api } from "@/lib/api";
 import ExportModal from "@/components/ExportModal";
+import ReaderTour, { READER_TOUR_KEY } from "@/components/onboarding/ReaderTour";
+import HelpDrawer from "@/components/onboarding/HelpDrawer";
 import { useHighlightStore } from "@/store/highlightStore";
 import { useBookmarkStore } from "@/store/bookmarkStore";
 import { useReaderStore } from "@/store/readerStore";
@@ -46,6 +48,8 @@ export default function ReaderPage() {
   const pageRestoredRef = useRef(false);
 
   const [exportOpen, setExportOpen] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const [panelSide, setPanelSide] = useState<"left" | "right">(() => {
     if (typeof window === "undefined") return "right";
@@ -140,6 +144,15 @@ export default function ReaderPage() {
       cancelled = true;
     };
   }, [documentId, highlightPageLimit, setHighlights]);
+
+  // 리더 온보딩 투어: PDF가 처음 로드될 때 1회 실행
+  useEffect(() => {
+    if (!pdfUrl) return;
+    if (!localStorage.getItem(READER_TOUR_KEY)) {
+      const timer = setTimeout(() => setShowTour(true), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [pdfUrl]);
 
   // 마지막 페이지 복원
   useEffect(() => {
@@ -256,10 +269,18 @@ export default function ReaderPage() {
         </button>
         <h1 className="text-sm font-semibold truncate flex-1">{docTitle}</h1>
         <button
+          data-tour="export-btn"
           onClick={() => setExportOpen(true)}
           className="px-2.5 py-1 text-xs text-gray-500 border rounded-lg hover:bg-gray-50 transition-colors shrink-0"
         >
           내보내기
+        </button>
+        <button
+          onClick={() => setShowHelp(true)}
+          title="도움말"
+          className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors text-sm font-medium shrink-0"
+        >
+          ?
         </button>
         <button
           onClick={togglePanelSide}
@@ -269,6 +290,9 @@ export default function ReaderPage() {
           {panelSide === "right" ? <PanelLeft size={16} /> : <PanelRight size={16} />}
         </button>
       </header>
+
+      {showTour && <ReaderTour onFinish={() => setShowTour(false)} />}
+      <HelpDrawer open={showHelp} onClose={() => setShowHelp(false)} />
 
       {exportOpen && (
         <ExportModal
