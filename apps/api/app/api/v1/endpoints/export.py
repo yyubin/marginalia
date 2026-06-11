@@ -19,13 +19,11 @@ router = APIRouter(tags=["export"])
 class ExportFormat(str, Enum):
     markdown = "markdown"
     csv = "csv"
-    pdf = "pdf"
 
 
 _CONTENT_TYPES = {
     ExportFormat.markdown: "text/markdown; charset=utf-8",
     ExportFormat.csv: "text/csv; charset=utf-8",
-    ExportFormat.pdf: "application/pdf",
 }
 
 
@@ -47,10 +45,8 @@ async def export_document(
         if format == ExportFormat.markdown:
             content_str, filename = await export_service.export_markdown(db, doc)
             body = content_str.encode("utf-8")
-        elif format == ExportFormat.csv:
-            body, filename = await export_service.export_csv(db, doc)
         else:
-            body, filename = await export_service.export_pdf(db, doc)
+            body, filename = await export_service.export_csv(db, doc)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

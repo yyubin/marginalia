@@ -62,16 +62,6 @@ async def delete_file_async(file_key: str) -> None:
     await asyncio.to_thread(delete_file, file_key)
 
 
-def download_file(file_key: str) -> bytes:
-    client = _get_client()
-    response = client.get_object(Bucket=settings.R2_BUCKET_NAME, Key=file_key)
-    return response["Body"].read()
-
-
-async def download_file_async(file_key: str) -> bytes:
-    return await asyncio.to_thread(download_file, file_key)
-
-
 def delete_files(file_keys: list[str]) -> None:
     if not file_keys:
         return
