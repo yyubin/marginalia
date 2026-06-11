@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { exportAnnotatedPdf } from "@/lib/pdfExport";
 
 type ExportFormat = "markdown" | "csv" | "pdf";
 
@@ -38,6 +39,12 @@ export default function ExportModal({ documentId, documentTitle, onClose }: Prop
     setLoading(true);
     setError(null);
     try {
+      if (format === "pdf") {
+        await exportAnnotatedPdf(documentId, documentTitle);
+        onClose();
+        return;
+      }
+
       const response = await api.get(`/documents/${documentId}/export`, {
         params: { format },
         responseType: "blob",
@@ -97,6 +104,12 @@ export default function ExportModal({ documentId, documentTitle, onClose }: Prop
             </label>
           ))}
         </div>
+
+        {format === "pdf" && (
+          <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+            브라우저에서 직접 처리합니다. 문서 크기와 어노테이션 수에 따라 수초가 소요될 수 있습니다.
+          </p>
+        )}
 
         {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
 
